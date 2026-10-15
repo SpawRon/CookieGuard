@@ -37,6 +37,128 @@ function New-CgDiag {
 #  нужно самому разбору.
 # ------------------------------------------------------------
 
+# ------------------------------------------------------------
+#  Кто сейчас защищает компьютер
+#
+#  Центр безопасности Windows ведёт список зарегистрированных
+#  антивирусов. productState — три байта: средний говорит,
+#  включён ли сканер (бит 0x10), младший — свежи ли базы.
+#  Это единственный способ узнать про ЧУЖОЙ антивирус: Get-MpComputerStatus
+#  знает только про Defender и о сопернике не сообщит.
+# ------------------------------------------------------------
+function Get-CgAntivirusProducts {
+    $out = @()
+    try {
+        foreach ($p in (Get-CimInstance -Namespace 'root\SecurityCenter2' -ClassName AntiVirusProduct -ErrorAction Stop)) {
+            $state = [int]$p.productState
+            $scanner = ($state -band 0x00FF00) -shr 8
+            $out += [PSCustomObject]@{
+                Name       = "$($p.displayName)"
+                IsDefender = ("$($p.displayName)" -match '(?i)windows defender|microsoft defender')
+                Enabled    = (($scanner -band 0x10) -ne 0)
+                UpToDate   = (($state -band 0x0000FF) -eq 0)
+                State      = ('0x{0:X6}' -f $state)
+            }
+        }
+    } catch { }
+    return @($out)
+}
+
+function Get-CgAntivirusDiag {
+    $d = @()
+
+    $products = Get-CgAntivirusProducts
+    $others = @($products | Where-Object { -not $_.IsDefender })
+    $otherOn = @($others | Where-Object { $_.Enabled })
+
+    # ---- чужой антивирус ----
+    if ($others.Count) {
+        $names = ($others | ForEach-Object { "$($_.Name)$(if ($_.Enabled) { ' (работает)' } else { ' (не работает)' })" }) -join ', '
+        if ($otherOn.Count) {
+            $d += New-CgDiag 'OK' 'Антивирус на компьютере' $names (
+                'Пока работает сторонний антивирус, Windows намеренно держит Defender выключенным — двум ' +
+                'антивирусам в реальном времени нельзя работать вместе. Это не поломка, и включать Defender не нужно.')
+        } else {
+            $d += New-CgDiag 'WARN' 'Антивирус на компьютере' $names (
+                'Сторонний антивирус зарегистрирован, но сам не работает. Защиты сейчас может не быть вовсе: ' +
+                'Defender уступил ему место, а он не включён. Либо запустите его, либо удалите — тогда Defender вернётся сам.')
+        }
+    }
+
+    # ---- запрет политикой ----
+    $polOff = $false
+    $polWhere = @()
+    foreach ($spec in @(
+        @{ K = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender'; N = 'DisableAntiSpyware' },
+        @{ K = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection'; N = 'DisableRealtimeMonitoring' },
+        @{ K = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection'; N = 'DisableBehaviorMonitoring' })) {
+        $v = (Get-ItemProperty -Path $spec.K -Name $spec.N -ErrorAction SilentlyContinue).$($spec.N)
+        if ("$v" -eq '1') { $polOff = $true; $polWhere += "$($spec.K)\$($spec.N)" }
+    }
+    if ($polOff) {
+        $d += New-CgDiag 'CRIT' 'Defender запрещён политикой' ($polWhere -join '; ') (
+            'Вот почему переключатель не держится: политика выключает защиту заново. Такие ключи ставит либо ' +
+            'администратор домена, либо «оптимизатор» или сборка Windows, либо вредонос, которому защита мешает. ' +
+            'Если компьютер ваш — удалите эти значения реестра и перезагрузитесь, затем включите защиту в ' +
+            '«Безопасность Windows».')
+    }
+
+    # ---- служба ----
+    $svc = Get-Service -Name 'WinDefend' -ErrorAction SilentlyContinue
+    if ($svc -and $svc.Status -ne 'Running' -and -not $otherOn.Count) {
+        $d += New-CgDiag 'CRIT' 'Служба Defender (WinDefend)' ("состояние: {0}" -f $svc.Status) (
+            'Служба антивируса не работает, а другого антивируса на компьютере нет. Пока она остановлена, ' +
+            'защиту включить не получится.')
+    }
+
+    # ---- сам Defender ----
+    try {
+        $mp = Get-MpComputerStatus -ErrorAction Stop
+        if ($mp.RealTimeProtectionEnabled) {
+            $d += New-CgDiag 'OK' 'Защита Windows в реальном времени' ("работает, базам {0} дн." -f $mp.AntivirusSignatureAge)
+        } elseif ($otherOn.Count) {
+            $d += New-CgDiag 'INFO' 'Защита Windows в реальном времени' 'выключена — место занято другим антивирусом' (
+                'Так и должно быть: защищает ' + (($otherOn | ForEach-Object { $_.Name }) -join ', ') + '.')
+        } else {
+            # Зарегистрированный, но не запущенный антивирус — это не
+            # «другого антивируса нет»: строка выше про него уже сказала,
+            # и противоречить ей нельзя.
+            $what = 'выключена, и другого антивируса нет'
+            if ($others.Count) { $what = 'выключена, а зарегистрированный антивирус не работает' }
+            $d += New-CgDiag 'CRIT' 'Защита Windows в реальном времени' $what (
+                'Компьютер сейчас без постоянной защиты. CookieGuard её не заменяет и включить не может — ' +
+                'это делается в «Безопасность Windows» → «Защита от вирусов и угроз» → «Управление настройками». ' +
+                'Если переключатель там не поддаётся или сам возвращается в «выкл» — смотрите пункты про политику ' +
+                'и про защиту от подделки выше.')
+        }
+
+        $tp = $null
+        try { $tp = $mp.IsTamperProtected } catch { }
+        if ($null -ne $tp) {
+            if ($tp) {
+                $d += New-CgDiag 'INFO' 'Защита от подделки Defender' 'включена' (
+                    'Пока она включена, настройки Defender нельзя менять ни программой, ни реестром — только руками ' +
+                    'в «Безопасность Windows». Это защита, а не неисправность.')
+            } else {
+                $d += New-CgDiag 'WARN' 'Защита от подделки Defender' 'выключена' (
+                    'Без неё отключить антивирус может любая программа с правами администратора — в том числе вредонос. ' +
+                    'Включается в «Безопасность Windows» → «Защита от вирусов и угроз» → «Управление настройками».')
+            }
+        }
+    } catch {
+        if ($otherOn.Count) {
+            $d += New-CgDiag 'INFO' 'Защита Windows' 'не отвечает — работает другой антивирус' (
+                'Defender отключён в пользу ' + (($otherOn | ForEach-Object { $_.Name }) -join ', ') + '. Это нормально.')
+        } else {
+            $d += New-CgDiag 'CRIT' 'Защита Windows' 'не отвечает, и другого антивируса не видно' (
+                'Модуль Defender не удалось опросить, а зарегистрированного антивируса нет. Похоже, защита снята ' +
+                'намеренно — либо «оптимизатором», либо вредоносом. Проверьте «Безопасность Windows».')
+        }
+    }
+
+    return @($d)
+}
+
 function Invoke-CgDiagnose {
     $d = @()
 
@@ -129,33 +251,16 @@ function Invoke-CgDiagnose {
             'переключатель будет возвращаться в положение «выключено».')
     }
 
-    # ---- 7. Defender ----
-    try {
-        $mp = Get-MpComputerStatus -ErrorAction Stop
-        if ($mp.RealTimeProtectionEnabled) {
-            $d += New-CgDiag 'OK' 'Защита Windows в реальном времени' ("работает, базам {0} дн." -f $mp.AntivirusSignatureAge)
-        } else {
-            $d += New-CgDiag 'CRIT' 'Защита Windows в реальном времени' 'выключена' (
-                'CookieGuard её не включает и включить не может — это делается в «Безопасность Windows» → ' +
-                '«Защита от вирусов и угроз» → «Управление настройками». Если переключатель там не поддаётся, ' +
-                'смотрите следующий пункт про защиту от подделки, либо на компьютере стоит другой антивирус, ' +
-                'который отключил Defender намеренно — это нормально.')
-        }
-        $tp = $null
-        try { $tp = $mp.IsTamperProtected } catch { }
-        if ($null -ne $tp) {
-            if ($tp) {
-                $d += New-CgDiag 'INFO' 'Защита от подделки Defender' 'включена' (
-                    'Пока она включена, настройки Defender нельзя менять программно — только руками в ' +
-                    '«Безопасность Windows». Это защита, а не неисправность.')
-            } else {
-                $d += New-CgDiag 'OK' 'Защита от подделки Defender' 'выключена'
-            }
-        }
-    } catch {
-        $d += New-CgDiag 'WARN' 'Защита Windows' 'опросить не удалось' (
-            'Модуль Defender не отвечает. Обычно это значит, что установлен сторонний антивирус и Defender отключён.')
-    }
+    # ---- 7. Антивирус ----
+    #
+    # «Защита не включается» почти всегда имеет одну из четырёх
+    # причин, и они требуют разных действий. Сказать просто
+    # «выключена» значит не сказать ничего, поэтому разбираем:
+    #   — работает другой антивирус (тогда так и должно быть);
+    #   — Defender запрещён политикой (переключатель не удержится);
+    #   — включена защита от подделки (менять можно только руками);
+    #   — остановлена служба WinDefend.
+    $d += Get-CgAntivirusDiag
 
     # ---- 8. политика выполнения сценариев ----
     $ep = Get-ExecutionPolicy

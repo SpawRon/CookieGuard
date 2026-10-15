@@ -20,6 +20,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 . (Join-Path $PSScriptRoot 'lib\SafeDns.ps1')
 . (Join-Path $PSScriptRoot 'lib\Archive.ps1')
 . (Join-Path $PSScriptRoot 'lib\Diagnose.ps1')
+. (Join-Path $PSScriptRoot 'lib\Update.ps1')
 . (Join-Path $PSScriptRoot 'lib\Ui.Theme.ps1')
 . (Join-Path $PSScriptRoot 'lib\Ui.Dialogs.ps1')
 . (Join-Path $PSScriptRoot 'lib\Ui.Actions.ps1')
@@ -55,7 +56,8 @@ foreach ($n in @('ChipAdmin','ChipAudit','ChipMon','BtnScan','BtnMon','Cards','B
                  'CmbDns','BtnDnsOn','BtnDnsOff','BtnDnsTest','DnsStats',
                  'TitleBar','BtnMinW','BtnMaxW','BtnCloseW','Nav','BtnScanFiles','BtnScanFiles2',
                  'TglAudit','TglGuard','AuditSub',
-                 'Inspector','InspKind','InspTitle','BtnInspClose','BtnDiag')) {
+                 'Inspector','InspKind','InspTitle','BtnInspClose','BtnDiag',
+                 'UpdStats','BtnUpdCheck','BtnUpdInstall','BtnUpdToken')) {
     $ui[$n] = $win.FindName($n)
 }
 
@@ -1294,6 +1296,10 @@ $tips = @{
     TglAudit       = 'Аудит доступа к файлам Windows: запись о том, какая программа открыла базу cookie или паролей. Без него главную задачу программы выполнить нечем.'
     TglGuard       = 'Сторож стартует вместе с Windows, работает в фоне и перезапускается, если его завершат. Это не драйвер ядра: противник с правами SYSTEM сможет его снести.'
     Nav            = 'Разделы программы. Нижние три — для разбора: что спрятано, чему вы доверяете, что программа делала.'
+    BtnDiag        = 'Проверяет предпосылки: права, политику аудита, групповую политику поверх неё, службы, журнал безопасности, антивирус и файлы браузеров. Отвечает, почему переключатель не поддаётся.'
+    BtnUpdCheck    = 'Спросить GitHub, вышла ли новая версия. Наружу уходит только запрос к api.github.com.'
+    BtnUpdInstall  = 'Заменить файлы программы на версию из репозитория. Рабочие данные — эталон, доверенные, карантин, журналы — остаются нетронутыми. Ставится только по этой кнопке, никогда само.'
+    BtnUpdToken    = 'Ключ доступа GitHub. Нужен, только если репозиторий приватный. Хранится на этом компьютере, в папке state.'
     BtnKill        = 'Завершить выбранный процесс вместе со всеми дочерними. Критические процессы Windows программа не трогает.'
     BtnQuar        = 'Обратимо спрятать файл: запустить его будет нельзя, но можно вернуть в разделе «Карантин».'
     BtnNeutr       = 'Завершить процесс И отправить его файл в карантин — одним действием.'
@@ -1369,6 +1375,100 @@ $ui.Tabs.SelectedIndex = 0
 
 $ui.BtnInspClose.Add_Click({ $ui.Inspector.Visibility = 'Collapsed' })
 $ui.BtnDiag.Add_Click({ Show-CgDiagnosis })
+
+# ------------------------------------------------------------
+#  Обновление с GitHub
+#
+#  Ставится только по кнопке. Самообновляющийся инструмент
+#  безопасности — это канал доставки кода на компьютер, и
+#  молчаливое обновление здесь было бы худшим из решений.
+# ------------------------------------------------------------
+$script:CgPendingUpdate = $null
+
+function Update-CgVersionText {
+    $cur = Get-CgInstalledCommit
+    if ($cur) {
+        $ui.UpdStats.Text = ('установлено: {0}' -f $cur.Substring(0, [Math]::Min(7, $cur.Length)))
+    } else {
+        $ui.UpdStats.Text = 'версия не отмечена — нажмите «Проверить»'
+    }
+    $ui.UpdStats.Foreground = '#7C8694'
+    $ui.BtnUpdInstall.IsEnabled = $false
+    $script:CgPendingUpdate = $null
+}
+
+$ui.BtnUpdCheck.Add_Click({
+    Set-Busy $true 'Спрашиваю GitHub...'
+    $r = Test-CgUpdate
+    Set-Busy $false
+
+    if (-not $r.Ok) {
+        $ui.UpdStats.Text = 'проверить не удалось'
+        $ui.UpdStats.Foreground = '#FFB340'
+        $null = Show-CgDialog -Title 'Не удалось проверить обновления' -Text $r.Error `
+            -Subject "$script:CgRepoOwner/$script:CgRepoName ($script:CgRepoBranch)" -Kind 'warn'
+        return
+    }
+
+    if (-not $r.HasUpdate) {
+        $ui.UpdStats.Text = ('установлена последняя версия: {0}' -f $r.Latest.Short)
+        $ui.UpdStats.Foreground = '#4ADE80'
+        $ui.BtnUpdInstall.IsEnabled = $false
+        Set-Status 'Обновлений нет'
+        return
+    }
+
+    $script:CgPendingUpdate = $r.Latest
+    $when = ''
+    if ($r.Latest.Date) { $when = $r.Latest.Date.ToLocalTime().ToString('dd.MM.yyyy HH:mm') }
+    $ui.UpdStats.Text = ('есть обновление: {0} от {1}' -f $r.Latest.Short, $when)
+    $ui.UpdStats.Foreground = '#3B9EFF'
+    $ui.BtnUpdInstall.IsEnabled = $true
+    Set-Status ('Доступно обновление: ' + $r.Latest.Message)
+})
+
+$ui.BtnUpdInstall.Add_Click({
+    $u = $script:CgPendingUpdate
+    if (-not $u) { Set-Status 'Сначала нажмите «Проверить»'; return }
+
+    $when = ''
+    if ($u.Date) { $when = $u.Date.ToLocalTime().ToString('dd.MM.yyyy HH:mm') }
+    if (-not (Confirm-CgDialog -Title 'Обновить программу?' `
+                -Text 'Файлы программы будут заменены на версию из репозитория. Эталон, доверенные, карантин и журналы останутся на месте. После обновления программу нужно перезапустить.' `
+                -Subject ("{0}  {1}`n{2}" -f $u.Short, $when, $u.Message) -Kind 'question' -Yes 'Обновить')) { return }
+
+    Set-Busy $true 'Обновляю...'
+    $res = Install-CgUpdate $u.Sha { param($t) Set-Status $t }
+    Set-Busy $false
+
+    if (-not $res.Ok) {
+        $null = Show-CgDialog -Title 'Обновление не установлено' -Text $res.Error -Kind 'danger'
+        Set-Status 'Обновление не установлено'
+        return
+    }
+
+    $note = 'Перезапустите программу, чтобы изменения вступили в силу.'
+    if (@($res.Locked).Count) {
+        # .exe занят, пока программа работает. Это не беда: он только
+        # запускает .ps1, в котором и лежит вся логика.
+        $note += ' Файлы, занятые работающей программой, останутся прежними: ' + (@($res.Locked) -join ', ') + '.'
+    }
+    $null = Show-CgDialog -Title 'Обновление установлено' `
+        -Text $note -Subject ('версия {0}, заменено файлов: {1}' -f $u.Short, $res.Copied) -Kind 'ok'
+    Update-CgVersionText
+    Set-Status 'Обновление установлено — перезапустите программу'
+})
+
+$ui.BtnUpdToken.Add_Click({
+    $cur = Get-CgGitHubToken
+    $k = Show-CgPrompt -Title 'Ключ доступа GitHub' `
+        -Text 'Нужен только приватному репозиторию. Если репозиторий открытый, ключ не требуется — оставьте поле пустым.' `
+        -Hint 'Токен хранится только на этом компьютере, в папке state, и наружу уходит лишь на api.github.com. Достаточно прав «только чтение» для этого репозитория.' `
+        -Default $cur
+    if ($null -eq $k) { Set-Status 'Ключ не изменён'; return }
+    $null = Set-CgGitHubToken "$k"
+    Set-Status $(if ("$k".Trim()) { 'Ключ GitHub сохранён' } else { 'Ключ GitHub убран' })
+})
 
 # ------------------------------------------------------------
 #  Переключатели «Параметров» поверх прежних кнопок
@@ -1503,6 +1603,7 @@ function Invoke-CgLateInit {
     Update-VtStats
     Update-BaseStats
     Update-GuardStats
+    Update-CgVersionText
     Refresh-Quar
     Refresh-Trust
     # наборы фильтрующего DNS в выпадающий список

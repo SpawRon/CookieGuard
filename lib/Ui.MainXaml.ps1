@@ -369,6 +369,24 @@ $script:CgMainXaml = @'
                 </Grid>
               </Border>
 
+              <TextBlock Text="ОБНОВЛЕНИЕ" Style="{StaticResource Sub}" FontSize="10.5" FontWeight="SemiBold" Margin="2,0,0,10"/>
+
+              <Border Style="{StaticResource CardRow}" Margin="0,0,0,20">
+                <Grid>
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE896;" Style="{StaticResource SettingIconGlyph}"/></Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="Версия программы" Style="{StaticResource SettingName}"/>
+                    <TextBlock x:Name="UpdStats" Text="" Style="{StaticResource Sub}" Margin="0,3,0,0"/>
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
+                    <Button x:Name="BtnUpdCheck"   Content="Проверить"/>
+                    <Button x:Name="BtnUpdInstall" Content="Обновить" Style="{StaticResource Primary}" IsEnabled="False"/>
+                    <Button x:Name="BtnUpdToken"   Content="Ключ GitHub" Style="{StaticResource Ghost}" Margin="0"/>
+                  </StackPanel>
+                </Grid>
+              </Border>
+
               <TextBlock Text="ЕСЛИ ЧТО-ТО НЕ ВКЛЮЧАЕТСЯ" Style="{StaticResource Sub}" FontSize="10.5" FontWeight="SemiBold" Margin="2,0,0,10"/>
 
               <Border Style="{StaticResource CardRow}" Margin="0,0,0,20">
