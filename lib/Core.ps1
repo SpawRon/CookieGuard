@@ -178,6 +178,48 @@ function Get-CgSignature {
     return $r
 }
 
+# ---------- политика аудита ----------
+#
+# auditpol отвечает на языке системы, и это уже один раз подвело:
+# проверка искала слово Success, а русская Windows отвечает «Успех»,
+# и включённый аудит читался как выключенный. Поэтому решение
+# принимается по положительному совпадению со списком известных
+# слов, а не по отсутствию слова «нет аудита»: незнакомый язык
+# тогда даст «выключено», и человек увидит исходный текст рядом,
+# а не бодрое «включён (Без аудита)».
+#
+# Формат /r — CSV:
+#   Machine Name,Policy Target,Subcategory,Subcategory GUID,
+#   Inclusion Setting,Exclusion Setting
+# Нужен столбец сразу после GUID: последний (Exclusion) почти
+# всегда пуст.
+$script:CgAuditOnWords  = '(?i)success|failure|успех|отказ|сбой|erfolg|réussite|éxito'
+$script:CgAuditOffWords = '(?i)^\s*(no auditing|нет аудита|без аудита|отсутствует)\s*$'
+
+function Get-CgAuditPolState {
+    param([string]$Guid)
+
+    $r = & auditpol /get /subcategory:"$Guid" /r 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        return [PSCustomObject]@{ Ok = $false; Enabled = $false; Text = ($r -join ' ') }
+    }
+
+    $setting = ''
+    foreach ($line in @($r)) {
+        if ("$line" -notmatch [regex]::Escape($Guid)) { continue }
+        $cols = "$line" -split ','
+        for ($i = 0; $i -lt $cols.Count; $i++) {
+            if ($cols[$i].Trim() -ne $Guid) { continue }
+            if ($i + 1 -lt $cols.Count) { $setting = $cols[$i + 1].Trim() }
+            break
+        }
+        if ($setting) { break }
+    }
+
+    $on = ($setting -and $setting -notmatch $script:CgAuditOffWords -and $setting -match $script:CgAuditOnWords)
+    return [PSCustomObject]@{ Ok = $true; Enabled = $on; Text = $setting }
+}
+
 function Get-CgHash {
     param([string]$Path)
     if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return '' }

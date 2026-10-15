@@ -369,6 +369,20 @@ $script:CgMainXaml = @'
                 </Grid>
               </Border>
 
+              <TextBlock Text="ЕСЛИ ЧТО-ТО НЕ ВКЛЮЧАЕТСЯ" Style="{StaticResource Sub}" FontSize="10.5" FontWeight="SemiBold" Margin="2,0,0,10"/>
+
+              <Border Style="{StaticResource CardRow}" Margin="0,0,0,20">
+                <Grid>
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE9D9;" Style="{StaticResource SettingIconGlyph}"/></Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="Разобраться, что мешает" Style="{StaticResource SettingName}"/>
+                    <TextBlock Text="Проверит права, политику аудита, службы, журнал безопасности и файлы браузеров — и назовёт причину, по которой переключатель не поддаётся." Style="{StaticResource Sub}" Margin="0,3,0,0"/>
+                  </StackPanel>
+                  <Button x:Name="BtnDiag" Grid.Column="2" Content="Проверить" Margin="14,0,0,0"/>
+                </Grid>
+              </Border>
+
               <!-- кнопки, оставшиеся от прежнего окна: обработчики
                    привязаны к ним, а управляют ими переключатели выше -->
               <StackPanel Orientation="Horizontal" Visibility="Collapsed">

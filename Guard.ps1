@@ -30,7 +30,7 @@ if ($state.AuditOn) {
     Write-Host '   Аудит доступа к файлам: ВКЛЮЧЁН' -ForegroundColor Green
 } else {
     Write-Host '   Аудит доступа к файлам: ВЫКЛЮЧЕН' -ForegroundColor Red
-    Write-Host '   -> запустите ENABLE-AUDIT.cmd, иначе не будет видно, кто открыл файл' -ForegroundColor Yellow
+    Write-Host '   -> включите аудит в окне CookieGuard (раздел «Защита»), иначе не будет видно, кто открыл файл' -ForegroundColor Yellow
 }
 if (-not (Test-CgAdmin)) {
     Write-Host '   Права администратора: нет (часть сведений о процессах будет скрыта)' -ForegroundColor Yellow

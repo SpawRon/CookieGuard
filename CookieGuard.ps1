@@ -19,6 +19,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 . (Join-Path $PSScriptRoot 'lib\Trust.ps1')
 . (Join-Path $PSScriptRoot 'lib\SafeDns.ps1')
 . (Join-Path $PSScriptRoot 'lib\Archive.ps1')
+. (Join-Path $PSScriptRoot 'lib\Diagnose.ps1')
 . (Join-Path $PSScriptRoot 'lib\Ui.Theme.ps1')
 . (Join-Path $PSScriptRoot 'lib\Ui.Dialogs.ps1')
 . (Join-Path $PSScriptRoot 'lib\Ui.Actions.ps1')
@@ -54,7 +55,7 @@ foreach ($n in @('ChipAdmin','ChipAudit','ChipMon','BtnScan','BtnMon','Cards','B
                  'CmbDns','BtnDnsOn','BtnDnsOff','BtnDnsTest','DnsStats',
                  'TitleBar','BtnMinW','BtnMaxW','BtnCloseW','Nav','BtnScanFiles','BtnScanFiles2',
                  'TglAudit','TglGuard','AuditSub',
-                 'Inspector','InspKind','InspTitle','BtnInspClose')) {
+                 'Inspector','InspKind','InspTitle','BtnInspClose','BtnDiag')) {
     $ui[$n] = $win.FindName($n)
 }
 
@@ -641,27 +642,19 @@ $ui.BtnGuardOn.Add_Click({
     if ($auto) { $txt += ' Авто-карантин включён — подтверждённое вредоносное изымается без вопросов.' }
     if (-not (Confirm-CgDialog -Title 'Включить постоянную защиту?' -Text $txt -Kind 'question' -Yes 'Включить')) { return }
     Set-Busy $true 'Устанавливаю сторожа...'
-    $sp = Join-Path $PSScriptRoot 'Install-Guard.ps1'
-    $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$sp`"")
-    if ($auto) { $argList += '-AutoNeutralize' }
-    try {
-        if ($app.IsAdmin) { $out = & $sp -AutoNeutralize:$auto 2>&1 | Out-String }
-        else { Start-Process powershell -ArgumentList $argList -Verb RunAs -Wait | Out-Null }
-        Set-Status 'Постоянная защита включена'
-    } catch { Set-Status "Не удалось: $($_.Exception.Message)" }
+    $extra = @()
+    if ($auto) { $extra = @('-AutoNeutralize') }
+    # через общий запуск: он читает код возврата и показывает причину,
+    # а не рапортует об успехе вслепую
+    $null = Invoke-AuditScript 'Install-Guard.ps1' 'Включение постоянной защиты' $extra
     Set-Busy $false
-    Update-GuardStats; Update-Cards
+    Update-GuardStats
 })
 $ui.BtnGuardOff.Add_Click({
     Set-Busy $true 'Снимаю сторожа...'
-    $sp = Join-Path $PSScriptRoot 'Uninstall-Guard.ps1'
-    try {
-        if ($app.IsAdmin) { $out = & $sp 2>&1 | Out-String }
-        else { Start-Process powershell -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$sp`"") -Verb RunAs -Wait | Out-Null }
-        Set-Status 'Постоянная защита выключена'
-    } catch { Set-Status "Не удалось: $($_.Exception.Message)" }
+    $null = Invoke-AuditScript 'Uninstall-Guard.ps1' 'Выключение постоянной защиты'
     Set-Busy $false
-    Update-GuardStats; Update-Cards
+    Update-GuardStats
 })
 
 # ------------------------------------------------------------
@@ -1017,30 +1010,124 @@ $ui.BtnExtStore.Add_Click({
 #  Аудит
 # ------------------------------------------------------------
 function Invoke-AuditScript {
-    param([string]$ScriptName, [string]$What)
+    param([string]$ScriptName, [string]$What, [string[]]$Extra = @())
+
     $sp = Join-Path $PSScriptRoot $ScriptName
+    if (-not (Test-Path -LiteralPath $sp)) {
+        $null = Show-CgDialog -Title "$What — не найден нужный файл" `
+            -Text 'Похоже, установка повреждена: переустановите программу.' -Subject $sp -Kind 'danger'
+        return $false
+    }
+
+    $out = ''
+    $code = 0
+
     try {
         if ($app.IsAdmin) {
-            # Выполняем прямо здесь, без порождения нового процесса.
-            # Через Start-Process -WindowStyle Hidden в Windows 11 всё равно
-            # мелькает окно: если терминал по умолчанию — Windows Terminal,
-            # он игнорирует флаг скрытия. А мелькающая чёрная консоль у того,
-            # кто боится за свои данные, — последнее, что нужно показывать.
-            $out = & $sp 2>&1 | Out-String
-            Write-CgLog 'INFO' ("$What выполнено внутри окна")
-            Set-Status "$What — завершено"
-            if ($out -match 'Не удалось|ошибк') { Set-Status "$What — завершено с замечаниями, смотрите журнал" }
+            # Выполняем прямо здесь, без порождения нового процесса:
+            # Start-Process -WindowStyle Hidden в Windows 11 всё равно мелькает
+            # чёрной консолью, если терминал по умолчанию — Windows Terminal.
+            #
+            # Звёздочка в «*>&1» обязательна. Вспомогательные сценарии пишут
+            # через Write-Host, то есть в информационный поток, а не в поток
+            # вывода. С прежним «2>&1» этот поток мимо $out, и окно рапортовало
+            # «завершено» даже когда сценарий выходил с ошибкой: снаружи это
+            # выглядело как «ничего не работает и ничего не сказано».
+            $global:LASTEXITCODE = 0
+            $out = (& $sp @Extra *>&1 | Out-String)
+            $code = [int]$global:LASTEXITCODE
         } else {
-            # Прав нет — без отдельного процесса с повышением не обойтись,
-            # окно UAC пользователь увидит и подтвердит сам.
-            $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$sp`"")
-            $p = Start-Process powershell -ArgumentList $argList -Verb RunAs -Wait -PassThru
-            Set-Status "$What — завершено (код $($p.ExitCode))"
+            # Прав нет — нужен отдельный процесс с повышением; окно UAC
+            # человек подтвердит сам. Перенаправить его вывод через
+            # Start-Process нельзя (-Verb несовместим с -Redirect*),
+            # поэтому дочерний процесс сам пишет отчёт в файл.
+            $tmp = Join-Path $env:TEMP ('cookieguard-run-{0}.log' -f [Guid]::NewGuid().ToString('N').Substring(0, 8))
+            $extraText = ''
+            if ($Extra.Count) { $extraText = ' ' + (($Extra | ForEach-Object { "'$_'" }) -join ' ') }
+            $cmd = "& '$sp'$extraText *>&1 | Out-File -LiteralPath '$tmp' -Encoding utf8; exit `$LASTEXITCODE"
+            $p = Start-Process powershell -Verb RunAs -Wait -PassThru -ArgumentList @(
+                '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command', $cmd)
+            $code = [int]$p.ExitCode
+            if (Test-Path -LiteralPath $tmp) {
+                $out = (Get-Content -LiteralPath $tmp -Raw -Encoding UTF8)
+                Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+            }
         }
     } catch {
-        Set-Status "$What — отменено или не удалось: $($_.Exception.Message)"
+        # Самый частый случай здесь — человек нажал «Нет» в окне UAC
+        Set-Status "$What — отменено"
+        $null = Show-CgDialog -Title "$What — не выполнено" `
+            -Text 'Windows не дала запустить изменение настроек. Чаще всего это отказ в окне запроса прав.' `
+            -Subject "$($_.Exception.Message)" -Kind 'warn'
+        Update-Cards
+        return $false
     }
+
+    Write-CgLog 'INFO' ("$What — код $code")
+    if ($out) { Write-CgLog 'INFO' ("$What — вывод: " + (($out -split "`r?`n" | Where-Object { $_.Trim() }) -join ' | ')) }
+
+    if ($code -ne 0) {
+        # Говорим, что именно не получилось, и сразу предлагаем разбор:
+        # молчаливый отказ — ровно то, из-за чего программа выглядела
+        # неработающей.
+        $tail = @($out -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 4) -join "`n"
+        $ans = Show-CgDialog -Title "$What не удалось" `
+            -Text 'Windows отказала в изменении настройки. Разбор покажет, что именно мешает: прав, политики, служб или файлов браузера.' `
+            -Subject $(if ($tail) { $tail } else { "код возврата $code" }) -Kind 'danger' `
+            -Buttons @('Разобраться', 'Закрыть')
+        Set-Status "$What — не выполнено (код $code)"
+        Update-Cards
+        if ($ans -eq 0) { Show-CgDiagnosis }
+        return $false
+    }
+
+    Set-Status "$What — выполнено"
     Update-Cards
+    return $true
+}
+
+# ------------------------------------------------------------
+#  «Почему не включается»
+# ------------------------------------------------------------
+function Show-CgDiagnosis {
+    Set-Busy $true 'Проверяю, что мешает...'
+    $diag = @()
+    try { $diag = @(Invoke-CgDiagnose) } catch {
+        Set-Busy $false
+        $null = Show-CgDialog -Title 'Разбор не удался' -Text "$($_.Exception.Message)" -Kind 'warn'
+        return
+    }
+    Set-Busy $false (Get-CgDiagSummary $diag)
+
+    # Находки разбора попадают в общий список: там у них и подробности,
+    # и правая кнопка, и «Спросить у ИИ» — отдельного окна не нужно.
+    $app.Findings = @($app.Findings | Where-Object { $_.Area -ne 'Почему не работает' }) + @(
+        $diag | ForEach-Object {
+            [PSCustomObject]@{
+                Severity = $_.Severity
+                Order    = @{ 'CRIT' = 0; 'WARN' = 1; 'NOTE' = 2; 'INFO' = 3; 'OK' = 4 }[$_.Severity]
+                Area     = 'Почему не работает'
+                Title    = ('{0}: {1}' -f $_.Name, $_.Value)
+                Detail   = $_.Detail
+                Path     = ''; Hash = ''; Query = $_.Name
+            }
+        })
+    # Разбор почти весь состоит из строк «норма» — ради них его и
+    # запускают. С фильтром «только важное» человек попадал бы на
+    # пустой список и решал, что проверка опять ничего не сделала.
+    $ui.ChkOnlyBad.IsChecked = $false
+    Show-Findings
+    Show-CgPage 'find'
+
+    $bad = @($diag | Where-Object { $_.Severity -eq 'CRIT' })
+    if ($bad.Count) {
+        $null = Show-CgDialog -Title 'Нашлось, что мешает' `
+            -Text ('Строк, из-за которых настройка не включается: {0}. Они открыты в «Находках» — выберите строку, справа будет сказано, что делать.' -f $bad.Count) `
+            -Subject (($bad | Select-Object -First 3 | ForEach-Object { "$($_.Name): $($_.Value)" }) -join "`n") -Kind 'warn'
+    } else {
+        $null = Show-CgDialog -Title 'Непреодолимых помех не нашлось' `
+            -Text 'Всё необходимое на месте. Если настройка всё равно не включается, посмотрите раздел «Журнал» — там записан вывод последней попытки.' -Kind 'ok'
+    }
 }
 
 $ui.BtnAudit.Add_Click({
@@ -1281,6 +1368,7 @@ $ui.Nav.SelectedIndex = 0
 $ui.Tabs.SelectedIndex = 0
 
 $ui.BtnInspClose.Add_Click({ $ui.Inspector.Visibility = 'Collapsed' })
+$ui.BtnDiag.Add_Click({ Show-CgDiagnosis })
 
 # ------------------------------------------------------------
 #  Переключатели «Параметров» поверх прежних кнопок

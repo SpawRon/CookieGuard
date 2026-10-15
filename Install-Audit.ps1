@@ -17,7 +17,7 @@ param(
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 
 if (-not (Test-CgAdmin)) {
-    Write-Host 'Нужны права администратора. Запустите ENABLE-AUDIT.cmd (он сам попросит повышение).' -ForegroundColor Red
+    Write-Host 'Нужны права администратора. Запустите CookieGuard.exe — он сам попросит повышение.' -ForegroundColor Red
     exit 1
 }
 
@@ -94,8 +94,8 @@ $watched | Set-Content -LiteralPath (Join-Path $stateDir 'audited-files.txt') -E
 
 Write-Host ''
 Write-Host '  Готово. Теперь Windows фиксирует каждое открытие этих файлов.' -ForegroundColor Green
-Write-Host '  Запустите START-MONITOR.cmd — он будет показывать это в реальном времени.' -ForegroundColor Green
+Write-Host '  Откройте CookieGuard и нажмите «Запустить монитор» — события пойдут в реальном времени.' -ForegroundColor Green
 Write-Host ''
-Write-Host '  Отключить обратно: DISABLE-AUDIT.cmd' -ForegroundColor DarkGray
+Write-Host '  Отключить обратно: тот же переключатель в разделе «Защита».' -ForegroundColor DarkGray
 Write-Host ''
 foreach ($w in $watched) { Write-Host ('    - ' + $w) -ForegroundColor DarkGray }

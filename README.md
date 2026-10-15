@@ -389,10 +389,10 @@ CookieGuard.ico        значок
 build\                 исходник запускающего .exe, манифест, сборка значка
 CookieGuard.cmd        запуск без .exe (запасной путь)
 CookieGuard.ps1        интерфейс
-SCAN.cmd               консольная проверка без окна
-START-MONITOR.cmd      консольный монитор
-ENABLE-AUDIT.cmd       аудит доступа к файлам
-DISABLE-AUDIT.cmd      выключить аудит и журнал запуска
+Scan.ps1               консольная проверка без окна
+Guard.ps1              консольный монитор
+Install-Audit.ps1      включить аудит доступа к файлам
+Uninstall-Audit.ps1    выключить аудит и журнал запуска
 Guard-Service.ps1      головной сторож (фоновый, без окна)
 Watchdog.ps1           наблюдатель, поднимает сторожа
 Install-Guard.ps1      поставить постоянную защиту

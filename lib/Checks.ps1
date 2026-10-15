@@ -583,8 +583,10 @@ function Get-CgRecentFileFindings {
 # 9. История обращений к cookie
 # ------------------------------------------------------------
 function Test-CgAuditEnabled {
-    $out = & auditpol /get /subcategory:'{0CCE921D-69AE-11D9-BED3-505054503030}' 2>&1 | Out-String
-    return ($out -match 'Success' -or $out -match 'Успех')
+    # Разбор вынесен в Core.ps1: раньше здесь искалось слово Success
+    # в выводе на языке системы, и на русской Windows включённый
+    # аудит читался как выключенный.
+    return (Get-CgAuditPolState '{0CCE921D-69AE-11D9-BED3-505054503030}').Enabled
 }
 
 # Расшифровка того, ЧТО именно делали с файлом. Это принципиально:
@@ -988,24 +990,124 @@ function Get-CgAdobeFindings {
     }
     if (-not $dbg) { $f += New-CgFinding 'OK' 'Adobe' 'Загрузка неподписанных расширений выключена' }
 
-    # ---- 5. Расширения в пользовательских папках ----
+    # ---- 5. Расширения CEP ----
+    #
+    # Прежняя версия помечала «ВНИМАНИЕ» любое расширение в
+    # пользовательской папке. Это бесполезная тревога: Creative
+    # Cloud сама ставит туда свои панели, и человек справедливо
+    # отвечал «ну да, Adobe так работает». Такая находка не
+    # помогает решить, а учит не читать находки.
+    #
+    # Что решает дело. Adobe грузит только ПОДПИСАННЫЕ расширения;
+    # неподписанное загрузится, только если включён PlayerDebugMode
+    # (это проверено выше, в $dbg). Значит, важны не папка и не
+    # отсутствие подписи сами по себе, а сочетание:
+    #
+    #   подписано Adobe              — норма, это её собственная панель
+    #   подписано третьей стороной   — заметка, издателя называем
+    #   без подписи и debug выключен — лежит, но НЕ РАБОТАЕТ
+    #   без подписи и debug включён  — вот это и надо смотреть
+    #
+    # и отдельно — что расширение делает: сетевые и системные
+    # вызовы считаются теми же весами, что и для скриптов.
     $extN = 0
-    foreach ($p in @("$env:APPDATA\Adobe\CEP\extensions", "$env:ProgramData\Adobe\CEP\extensions")) {
-        foreach ($d in (Get-ChildItem -LiteralPath $p -Directory -ErrorAction SilentlyContinue)) {
+    $extDirs = @(
+        @{ P = "$env:APPDATA\Adobe\CEP\extensions";   Who = 'только для вас' },
+        @{ P = "$env:ProgramData\Adobe\CEP\extensions"; Who = 'для всех пользователей' }
+    )
+
+    foreach ($spec in $extDirs) {
+        foreach ($d in (Get-ChildItem -LiteralPath $spec.P -Directory -ErrorAction SilentlyContinue)) {
             $extN++
-            $hasNet = $false; $why = @()
-            foreach ($jf in (Get-ChildItem -LiteralPath $d.FullName -Recurse -Depth 3 -File -Include '*.js', '*.jsx', '*.html' -ErrorAction SilentlyContinue | Select-Object -First 60)) {
+
+            # --- кто это по документам самого расширения ---
+            $bundleId = ''; $bundleName = ''; $bundleVer = ''; $hosts = @()
+            $mf = Join-Path $d.FullName 'CSXS\manifest.xml'
+            if (Test-Path -LiteralPath $mf) {
+                try {
+                    [xml]$mx = Get-Content -LiteralPath $mf -Raw -ErrorAction Stop
+                    $bundleId   = "$($mx.ExtensionManifest.ExtensionBundleId)"
+                    $bundleName = "$($mx.ExtensionManifest.ExtensionBundleName)"
+                    $bundleVer  = "$($mx.ExtensionManifest.ExtensionBundleVersion)"
+                    $hosts = @($mx.ExtensionManifest.ExecutionEnvironment.HostList.Host | ForEach-Object { "$($_.Name)" } | Where-Object { $_ })
+                } catch { }
+            }
+            if (-not $bundleName) { $bundleName = $d.Name }
+
+            # --- подписано ли ---
+            # ZXP-пакет при установке приносит META-INF\signatures.xml;
+            # у распакованного вручную расширения его нет.
+            $signed = (Test-Path -LiteralPath (Join-Path $d.FullName 'META-INF\signatures.xml')) -or
+                      (Test-Path -LiteralPath (Join-Path $d.FullName 'META-INF\signatures.xml.sig'))
+            $byAdobe = ($bundleId -like 'com.adobe.*')
+
+            # --- что оно умеет ---
+            $score = 0
+            $why = New-Object System.Collections.ArrayList
+            $files = @()
+            foreach ($jf in (Get-ChildItem -LiteralPath $d.FullName -Recurse -Depth 4 -File -ErrorAction SilentlyContinue |
+                             Where-Object { $_.Extension -in '.js', '.jsx', '.html', '.htm', '.json' } | Select-Object -First 80)) {
                 $t = ''
                 try { $t = Get-Content -LiteralPath $jf.FullName -Raw -ErrorAction Stop } catch { }
-                if ($t -match 'cmd\.exe|powershell|system\.callSystem|XMLHttpRequest|new\s+Socket') { $hasNet = $true; $why += $jf.Name }
+                if (-not $t) { continue }
+                foreach ($rule in $script:AdobeRiskyApi) {
+                    if ($t -match $rule.P) {
+                        if ($why -notcontains $rule.T) { $null = $why.Add($rule.T); $score += $rule.W }
+                        $files += $jf.Name
+                    }
+                }
             }
-            $sev = 'WARN'
-            $d2 = "Папка: $($d.FullName)`nУстановлено в пользовательскую папку — то есть без прав администратора."
-            if ($hasNet) { $sev = 'CRIT'; $d2 += "`n`nВнутри есть обращения к системе или сети: " + (($why | Select-Object -Unique -First 6) -join ', ') }
-            $f += New-CgFinding $sev 'Adobe' ('Расширение Adobe: {0}' -f $d.Name) $d2 $d.FullName
+
+            # --- вердикт ---
+            $sev = 'INFO'
+            $verdict = ''
+            if ($byAdobe -and $signed) {
+                $sev = 'OK'
+                $verdict = 'Это собственная панель Adobe: подписана и опознана по идентификатору com.adobe.*. Так и должно быть.'
+            } elseif ($signed) {
+                $sev = 'NOTE'
+                $verdict = 'Расширение подписано, то есть установлено из готового пакета ZXP, а не подложено в папку. Это не гарантия честности, но подделать подпись без ключа издателя нельзя.'
+                if ($score -ge 60) { $sev = 'WARN' }
+            } elseif (-not $dbg) {
+                $sev = 'NOTE'
+                $verdict = 'Подписи нет, но загрузка неподписанных расширений выключена (PlayerDebugMode = 0) — значит, Adobe его НЕ ЗАГРУЖАЕТ. Сейчас оно просто лежит на диске и не работает.'
+            } else {
+                $sev = 'WARN'
+                $verdict = 'Подписи нет, И при этом включена загрузка неподписанных расширений. Вот сочетание, ради которого эта проверка и сделана: расширение будет загружено, хотя никто за него не отвечает.'
+                if ($score -ge 45) { $sev = 'CRIT' }
+            }
+
+            $det = "Папка: $($d.FullName)`nУстановлено: $($spec.Who)"
+            if ($bundleId)  { $det += "`nИдентификатор: $bundleId" }
+            if ($bundleVer) { $det += "`nВерсия: $bundleVer" }
+            if ($hosts.Count) { $det += "`nПодключается к: $($hosts -join ', ')" }
+            $det += "`nПодпись пакета: " + $(if ($signed) { 'есть' } else { 'нет' })
+            $det += "`nЗагрузка неподписанных (PlayerDebugMode): " + $(if ($dbg) { 'ВКЛЮЧЕНА' } else { 'выключена' })
+            $det += "`n`n$verdict"
+
+            if ($why.Count) {
+                $det += "`n`nЧто расширение умеет (вес $score):`n" + (($why | ForEach-Object { '  - ' + $_ }) -join "`n")
+                $det += "`nВстречено в файлах: " + (($files | Select-Object -Unique -First 6) -join ', ')
+                $det += "`n`nСами по себе эти вызовы законны — ими пользуются и честные панели. Значение имеет их совокупность вместе с отсутствием подписи."
+            } else {
+                $det += "`n`nОбращений к системе и сети внутри не найдено."
+            }
+
+            if (-not $signed -and -not $dbg) {
+                # Неподписанное и незагружаемое — но только пока режим
+                # выключен. Сказать «ничего не делайте» было бы неполно:
+                # один щелчок в PlayerDebugMode оживляет его.
+                $det += "`n`nЧто делать: сейчас оно безвредно, потому что не загружается. Но если когда-нибудь включите загрузку неподписанных расширений — оно оживёт. Если такую панель вы не ставили, папку лучше убрать."
+            } elseif ($sev -eq 'OK' -or $sev -eq 'NOTE') {
+                $det += "`n`nЧто делать: ничего. Если панель вам не нужна — удалите её через Creative Cloud, а не из папки."
+            } else {
+                $det += "`n`nЧто делать: вспомните, ставили ли вы такую панель. Если нет — выключите PlayerDebugMode (находка выше), и расширение перестанет загружаться; саму папку можно убрать в карантин."
+            }
+
+            $f += New-CgFinding $sev 'Adobe' ('Расширение Adobe: {0}' -f $bundleName) $det $d.FullName '' $bundleName
         }
     }
-    if (-not $extN) { $f += New-CgFinding 'OK' 'Adobe' 'Сторонних расширений Adobe в пользовательских папках нет' }
+    if (-not $extN) { $f += New-CgFinding 'OK' 'Adobe' 'Расширений Adobe в пользовательских папках нет' }
 
     return $f
 }
