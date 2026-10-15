@@ -89,14 +89,45 @@ foreach ($item in (Get-ChildItem -LiteralPath $src -Force)) {
 
     $dest = Join-Path $Path $item.Name
     if ($item.PSIsContainer) {
-        Copy-Item -LiteralPath $item.FullName -Destination $dest -Recurse -Force
+        # Пофайлово, а не папкой целиком.
+        #
+        # «Copy-Item -Recurse» в уже существующую папку кладёт её
+        # ВНУТРЬ себя: при установке поверх прежней версии вместо
+        # замены lib получалось lib\lib, и программа продолжала
+        # работать на старых модулях. Первая установка этого не
+        # показывает — папки назначения ещё нет, — поэтому ошибка
+        # и жила так долго.
+        $baseLen = $item.FullName.TrimEnd('\').Length + 1
+        foreach ($f in (Get-ChildItem -LiteralPath $item.FullName -Recurse -File -Force)) {
+            $rel = $f.FullName.Substring($baseLen)
+            $to = Join-Path $dest $rel
+            $toDir = Split-Path -Parent $to
+            if ($toDir -and -not (Test-Path -LiteralPath $toDir)) {
+                New-Item -ItemType Directory -Path $toDir -Force | Out-Null
+            }
+            Copy-Item -LiteralPath $f.FullName -Destination $to -Force
+        }
     } else {
         Copy-Item -LiteralPath $item.FullName -Destination $dest -Force
     }
     $copied++
 }
-# build нужен, чтобы можно было пересобрать exe после обновления
-Copy-Item -LiteralPath (Join-Path $src 'build') -Destination (Join-Path $Path 'build') -Recurse -Force -ErrorAction SilentlyContinue
+# build нужен, чтобы можно было пересобрать exe после обновления.
+# Пофайлово по той же причине, что и выше: -Recurse в существующую
+# папку создал бы build\build при повторной установке.
+$buildSrc = Join-Path $src 'build'
+if (Test-Path -LiteralPath $buildSrc) {
+    $buildDst = Join-Path $Path 'build'
+    $bLen = $buildSrc.TrimEnd('\').Length + 1
+    foreach ($f in (Get-ChildItem -LiteralPath $buildSrc -Recurse -File -Force -ErrorAction SilentlyContinue)) {
+        $to = Join-Path $buildDst $f.FullName.Substring($bLen)
+        $toDir = Split-Path -Parent $to
+        if ($toDir -and -not (Test-Path -LiteralPath $toDir)) {
+            New-Item -ItemType Directory -Path $toDir -Force -ErrorAction SilentlyContinue | Out-Null
+        }
+        Copy-Item -LiteralPath $f.FullName -Destination $to -Force -ErrorAction SilentlyContinue
+    }
+}
 Write-CgItem 'OK' "Файлы скопированы в $Path (элементов: $copied)"
 
 # ---- 4. папка данных с правильными правами ----

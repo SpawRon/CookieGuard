@@ -181,19 +181,31 @@ function Install-CgUpdate {
         $copied = 0
         $locked = New-Object System.Collections.ArrayList
 
-        foreach ($item in (Get-ChildItem -LiteralPath $src -Force)) {
-            if ($script:CgUpdateSkip -contains $item.Name) { continue }
-            $dest = Join-Path $root $item.Name
+        # Копируем пофайлово, а не папками.
+        #
+        # «Copy-Item -Recurse» в УЖЕ СУЩЕСТВУЮЩУЮ папку кладёт её
+        # внутрь себя: вместо замены lib получалось lib\lib, а сами
+        # модули оставались старыми — обновление молча не работало.
+        # Та же ловушка однажды породила вложенную копию всего
+        # проекта. Перебор файлов с их относительными путями такого
+        # поведения не имеет и ведёт себя одинаково всегда.
+        $srcLen = $src.TrimEnd('\').Length + 1
+        foreach ($f in (Get-ChildItem -LiteralPath $src -Recurse -File -Force)) {
+            $rel = $f.FullName.Substring($srcLen)
+            $first = ($rel -split '\\')[0]
+            if ($script:CgUpdateSkip -contains $first) { continue }
+
+            $dest = Join-Path $root $rel
             try {
-                if ($item.PSIsContainer) {
-                    Copy-Item -LiteralPath $item.FullName -Destination $dest -Recurse -Force -ErrorAction Stop
-                } else {
-                    Copy-Item -LiteralPath $item.FullName -Destination $dest -Force -ErrorAction Stop
+                $destDir = Split-Path -Parent $dest
+                if ($destDir -and -not (Test-Path -LiteralPath $destDir)) {
+                    $null = New-Item -ItemType Directory -Path $destDir -Force -ErrorAction Stop
                 }
+                Copy-Item -LiteralPath $f.FullName -Destination $dest -Force -ErrorAction Stop
                 $copied++
             } catch {
                 # Запущенный .exe заменить нельзя — это ожидаемо
-                $null = $locked.Add($item.Name)
+                $null = $locked.Add($rel)
             }
         }
 
