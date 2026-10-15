@@ -181,8 +181,8 @@ $script:CgPromptXaml = @'
         <TextBlock x:Name="PrText"  Style="{StaticResource Sub}" FontSize="13" Margin="0,7,0,0" LineHeight="19"/>
         <TextBlock x:Name="PrSubject" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource Muted}"
                    Margin="0,10,0,0" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
-        <TextBox     x:Name="PrInput" Margin="0,16,0,0" Height="38"/>
-        <PasswordBox x:Name="PrPass"  Margin="0,16,0,0" Height="38" Visibility="Collapsed"/>
+        <TextBox     x:Name="PrInput" Margin="0,16,0,0"/>
+        <PasswordBox x:Name="PrPass"  Margin="0,16,0,0" Visibility="Collapsed"/>
         <TextBlock x:Name="PrHint" Style="{StaticResource Sub}" FontSize="11.5" Margin="0,9,0,0" Visibility="Collapsed"/>
       </StackPanel>
       <Border Grid.Row="1" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
@@ -316,7 +316,7 @@ $script:CgTrustXaml = @'
         <TextBlock Text="НА ЧТО РАСПРОСТРАНЯЕТСЯ" Style="{StaticResource GroupLabel}" Margin="0,20,0,10"/>
         <StackPanel x:Name="TrScopes"/>
         <TextBlock Text="ПОЧЕМУ ОСТАВЛЯЕТЕ — ЗАМЕТКА СЕБЕ" Style="{StaticResource GroupLabel}" Margin="0,22,0,10"/>
-        <TextBox x:Name="TrNote" Height="38"/>
+        <TextBox x:Name="TrNote"/>
       </StackPanel>
       <Border Grid.Row="1" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
               Margin="0,22,0,0" Padding="24,16">
@@ -343,7 +343,7 @@ function Show-CgTrustDialog {
     foreach ($o in @($Options)) {
         $r = New-Object System.Windows.Controls.RadioButton
         $r.Style = $style
-        $r.Tag = $o.Scope
+        $r.Tag = $o
 
         $sp = New-Object System.Windows.Controls.StackPanel
         $t1 = New-Object System.Windows.Controls.TextBlock
@@ -372,8 +372,9 @@ function Show-CgTrustDialog {
         $sel = @($radios | Where-Object { $_.IsChecked })
         if (-not $sel.Count) { return }
         $res.V = [PSCustomObject]@{
-            Scope = [string]$sel[0].Tag
-            Note  = [string]$w.FindName('TrNote').Text
+            Scope  = [string]$sel[0].Tag.Scope
+            Option = $sel[0].Tag
+            Note   = [string]$w.FindName('TrNote').Text
         }
         $w.Close()
     }.GetNewClosure())
@@ -381,6 +382,127 @@ function Show-CgTrustDialog {
     $w.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Escape') { $res.V = $null; $w.Close() } }.GetNewClosure())
     Add-CgWindowFadeIn $w
 
+    if ($script:CgDialogOwner -and $script:CgDialogOwner.IsVisible) { $w.Owner = $script:CgDialogOwner }
+    else { $w.WindowStartupLocation = 'CenterScreen' }
+    $null = $w.ShowDialog()
+    return $res.V
+}
+
+# ------------------------------------------------------------
+#  Список с галочками: «Исправить всё»
+#
+#  Одно окно вместо двадцати подтверждений. Каждая строка — что
+#  именно изменится; снять галочку можно с любой. Так «всё сразу»
+#  не превращается в «всё вслепую»: человек видит список целиком
+#  и убирает то, что решил оставить (например, отключённые им
+#  самим обновления Windows).
+# ------------------------------------------------------------
+$script:CgChecklistXaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ShowInTaskbar="False" SizeToContent="Height" Width="640" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" Title="CookieGuard">
+  <Window.Resources>
+<!--THEME-->
+  </Window.Resources>
+  <Border Background="{StaticResource WinBg}" BorderBrush="{StaticResource StrongLine}" BorderThickness="1" Margin="14">
+    <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.5" Color="#000000"/></Border.Effect>
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+      <StackPanel Grid.Row="0" Margin="24,22,24,0">
+        <TextBlock x:Name="ClTitle" Style="{StaticResource H2}" TextWrapping="Wrap"/>
+        <TextBlock x:Name="ClText" Style="{StaticResource Sub}" FontSize="13" Margin="0,7,0,0" LineHeight="19"/>
+        <StackPanel Orientation="Horizontal" Margin="0,14,0,8">
+          <Button x:Name="ClAll"  Content="Отметить всё" Style="{StaticResource Ghost}" Padding="10,4"/>
+          <Button x:Name="ClNone" Content="Снять всё" Style="{StaticResource Ghost}" Padding="10,4"/>
+        </StackPanel>
+      </StackPanel>
+      <Border Grid.Row="1" Margin="24,0,24,0" BorderBrush="{StaticResource Line}" BorderThickness="1" Background="{StaticResource NavBg}">
+        <ScrollViewer MaxHeight="380" VerticalScrollBarVisibility="Auto">
+          <StackPanel x:Name="ClList" Margin="0,4"/>
+        </ScrollViewer>
+      </Border>
+      <Border Grid.Row="2" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
+              Margin="0,22,0,0" Padding="24,16">
+        <Grid>
+          <TextBlock x:Name="ClCount" Style="{StaticResource Stat}" VerticalAlignment="Center"/>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="ClOk" Content="Исправить" Style="{StaticResource Primary}" MinWidth="104" IsDefault="True"/>
+            <Button x:Name="ClCancel" Content="Отмена" MinWidth="104" Margin="8,0,0,0" IsCancel="True"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</Window>
+'@
+
+# $Items: объекты с полями Title, Sub, Checked, Risky. Возвращает
+# номера отмеченных строк или $null, если окно закрыли.
+function Show-CgChecklistDialog {
+    param([string]$Title, [string]$Text = '', $Items, [string]$OkText = 'Исправить')
+    $w = New-CgWindow $script:CgChecklistXaml
+    $w.FindName('ClTitle').Text = $Title
+    $tb = $w.FindName('ClText')
+    if ($Text) { $tb.Text = $Text } else { $tb.Visibility = 'Collapsed' }
+    $w.FindName('ClOk').Content = $OkText
+    $list = $w.FindName('ClList')
+    $count = $w.FindName('ClCount')
+
+    $boxes = New-Object System.Collections.ArrayList
+    $upd = {
+        $n = @($boxes | Where-Object { $_.IsChecked }).Count
+        $count.Text = "отмечено: $n из $($boxes.Count)"
+        $w.FindName('ClOk').IsEnabled = ($n -gt 0)
+    }.GetNewClosure()
+
+    $i = 0
+    foreach ($it in @($Items)) {
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Margin = '14,8,14,8'
+        $cb.VerticalAlignment = 'Top'
+        $cb.IsChecked = [bool]$it.Checked
+        $cb.Tag = $i
+        $sp = New-Object System.Windows.Controls.StackPanel
+        $t1 = New-Object System.Windows.Controls.TextBlock
+        $t1.Text = "$($it.Title)"
+        $t1.TextWrapping = 'Wrap'
+        $t1.Foreground = $(if ($it.Risky) { '#FFB340' } else { '#ECEFF4' })
+        $null = $sp.Children.Add($t1)
+        if ($it.Sub) {
+            $t2 = New-Object System.Windows.Controls.TextBlock
+            $t2.Text = "$($it.Sub)"
+            $t2.FontSize = 11.5
+            $t2.TextWrapping = 'Wrap'
+            $t2.Margin = '0,2,0,0'
+            $t2.Foreground = '#7C8694'
+            $null = $sp.Children.Add($t2)
+        }
+        $sp.MaxWidth = 520
+        $cb.Content = $sp
+        $cb.Add_Click($upd)
+        $null = $list.Children.Add($cb)
+        $null = $boxes.Add($cb)
+        $i++
+    }
+    & $upd
+
+    $w.FindName('ClAll').Add_Click({ foreach ($b in $boxes) { $b.IsChecked = $true }; & $upd }.GetNewClosure())
+    $w.FindName('ClNone').Add_Click({ foreach ($b in $boxes) { $b.IsChecked = $false }; & $upd }.GetNewClosure())
+
+    $res = @{ V = $null }
+    $w.FindName('ClOk').Add_Click({
+        $res.V = @($boxes | Where-Object { $_.IsChecked } | ForEach-Object { [int]$_.Tag })
+        $w.Close()
+    }.GetNewClosure())
+    $w.FindName('ClCancel').Add_Click({ $res.V = $null; $w.Close() }.GetNewClosure())
+    $w.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Escape') { $res.V = $null; $w.Close() } }.GetNewClosure())
+    Add-CgWindowFadeIn $w
     if ($script:CgDialogOwner -and $script:CgDialogOwner.IsVisible) { $w.Owner = $script:CgDialogOwner }
     else { $w.WindowStartupLocation = 'CenterScreen' }
     $null = $w.ShowDialog()

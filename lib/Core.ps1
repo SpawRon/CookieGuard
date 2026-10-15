@@ -323,6 +323,7 @@ function Get-CgProcessTable {
             ParentId    = [int]$p.ParentProcessId
             ParentName  = $parent
             ParentPath  = $parentPath
+            Ancestors   = @(Get-CgAncestors $cim $procId)
             User        = $owners[$procId]
             Started     = $created
             Risk        = 0
@@ -330,6 +331,45 @@ function Get-CgProcessTable {
         }
     }
     return $out
+}
+
+# ------------------------------------------------------------
+#  Цепочка предков процесса
+#
+#  Одного родителя мало. Claude Code запускает cmd, тот — node,
+#  тот — railway.exe; у railway.exe родитель node.exe, и доверие
+#  «всё, что запускает Claude» по одному родителю его не узнаёт.
+#  Идём вверх на несколько ступеней, пока не кончатся предки.
+#  Номера процессов Windows раздаёт повторно, поэтому предок,
+#  запущенный позже потомка, — это уже чужой процесс: на нём
+#  цепочку обрываем.
+# ------------------------------------------------------------
+function Get-CgAncestors {
+    param($Table, [int]$ProcId, [int]$Depth = 6)
+    $out = @()
+    $seen = @{}
+    $cur = $Table[$ProcId]
+    while ($cur -and $out.Count -lt $Depth) {
+        $ppid = [int]$cur.ParentProcessId
+        if ($ppid -le 4 -or $seen.ContainsKey($ppid) -or -not $Table.ContainsKey($ppid)) { break }
+        $par = $Table[$ppid]
+        try { if ($par.CreationDate -and $cur.CreationDate -and $par.CreationDate -gt $cur.CreationDate) { break } } catch { }
+        $seen[$ppid] = $true
+        $out += [PSCustomObject]@{ Id = $ppid; Name = "$($par.Name)"; Path = (Get-CgNormPath "$($par.ExecutablePath)") }
+        $cur = $par
+    }
+    return $out
+}
+
+# Chrome и его родня запускают помощника расширения (native messaging)
+# через cmd.exe /d /s /c "...host.exe" chrome-extension://<id>/. Это штатный
+# механизм браузера, а не «браузер запустил интерпретатор»: так работают
+# менеджеры паролей, Claude в Chrome и любые расширения с программой на диске.
+function Test-CgNativeMessagingHost {
+    param([string]$Name, [string]$ParentName, [string]$CommandLine)
+    if ("$Name".ToLowerInvariant() -ne 'cmd.exe') { return $false }
+    if ("$ParentName".ToLowerInvariant() -notmatch '^(chrome|msedge|brave|vivaldi|opera|browser|firefox)\.exe$') { return $false }
+    return ("$CommandLine" -match '(?i)/c\s+"*[^"]+\.exe"*\s+"?(chrome-extension://[a-p]{32}/|[a-z0-9_.-]+@[a-z0-9_.-]+|\{[0-9a-f-]{36}\})')
 }
 
 # ---------- оценка риска ----------
@@ -455,7 +495,11 @@ function Measure-CgProcessRisk {
         $null = $why.Add("офисная программа ($parent) запустила интерпретатор"); $behav += 45
     }
     if ($parent -match '^(chrome|msedge|brave|firefox|opera)\.exe$' -and ($scriptKids -contains $name)) {
-        $null = $why.Add("браузер ($parent) запустил интерпретатор"); $behav += 35
+        if (Test-CgNativeMessagingHost $name $parent $cmd) {
+            $null = $why.Add("браузер ($parent) запустил помощника расширения — штатный механизм native messaging")
+        } else {
+            $null = $why.Add("браузер ($parent) запустил интерпретатор"); $behav += 35
+        }
     }
 
     # 7) свежесозданный файл в пользовательской папке

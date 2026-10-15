@@ -219,20 +219,7 @@ function Get-CgTrafficFindings {
         $f += New-CgFinding 'OK' 'hosts' 'Файл hosts без посторонних перенаправлений' '' $hostsPath
     }
 
-    $knownCA = 'Microsoft|DigiCert|VeriSign|GlobalSign|Baltimore|Thawte|GeoTrust|Go Daddy|Entrust|COMODO|Sectigo|USERTrust|Certum|QuoVadis|Starfield|AddTrust|Symantec|SSL\.com|Amazon|ISRG|Actalis|Buypass|D-TRUST|Hellenic|IdenTrust|Network Solutions|SecureTrust|Security Communication|Staat der|SwissSign|T-TeleSec|TeliaSonera|UCA|XRamp|AffirmTrust|Atos|Autoridad|Certigna|certSIGN|CFCA|Chambers|CommScope|DigitalSign|E-Tugra|emSign|GDCA|GTS|Hongkong|HARICA|Izenpe|Microsec|NAVER|NetLock|OISTE|OpenTrust|SZAFIR|TUBITAK|TWCA|Telia|Trustwave|TrustCor|Visa|vTrus|WoSign'
-    $odd = Get-ChildItem Cert:\LocalMachine\Root -ErrorAction SilentlyContinue |
-           Where-Object { $_.Issuer -eq $_.Subject -and $_.Subject -notmatch $knownCA }
-    if ($odd) {
-        foreach ($c in $odd) {
-            $sev = 'WARN'
-            $extra = ''
-            if ($c.NotAfter -lt (Get-Date)) { $sev = 'NOTE'; $extra = "`nСрок действия истёк — угрозы уже не представляет." }
-            $nm = Get-CgSignerName $c.Subject
-            $f += New-CgFinding $sev 'Сертификаты' ('Нестандартный корневой сертификат: {0}' -f $nm) ("Кому выдан: $($c.Subject)`nДействует до: $($c.NotAfter)`nОтпечаток: $($c.Thumbprint)`n`nВладелец такого сертификата может читать ваш защищённый трафик.$extra") '' '' $nm
-        }
-    } else {
-        $f += New-CgFinding 'OK' 'Сертификаты' 'Посторонних корневых сертификатов не найдено'
-    }
+    $f += Get-CgCertFindings
 
     try {
         foreach ($d in (Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction Stop | Where-Object { $_.ServerAddresses })) {
@@ -241,6 +228,231 @@ function Get-CgTrafficFindings {
     } catch { }
     return $f
 }
+
+# ------------------------------------------------------------
+# 2а. Корневые сертификаты — с объяснением, а не только тревогой
+#
+#  «Владелец может читать ваш трафик» было правдой для одних
+#  сертификатов и неправдой для других — а звучало одинаково. У
+#  сертификата загрузчика Atmel или драйвера Universal ADB права
+#  читать HTTPS нет вовсе: он разрешён только для подписи кода.
+#  Ставить его рядом с перехватчиком трафика значит учить человека,
+#  что тревога этого раздела ничего не стоит.
+#
+#  Поэтому для каждого сертификата отвечаем на три вопроса:
+#    что это, скорее всего, такое;
+#    может ли он на самом деле читать защищённый трафик;
+#    что с ним можно сделать и чем это грозит.
+# ------------------------------------------------------------
+$script:CgKnownCA = 'Microsoft|DigiCert|VeriSign|GlobalSign|Baltimore|Thawte|GeoTrust|Go Daddy|Entrust|COMODO|Sectigo|USERTrust|Certum|QuoVadis|Starfield|AddTrust|Symantec|SSL\.com|Amazon|ISRG|Actalis|Buypass|D-TRUST|Hellenic|IdenTrust|Network Solutions|SecureTrust|Security Communication|Staat der|SwissSign|T-TeleSec|TeliaSonera|UCA|XRamp|AffirmTrust|Atos|Autoridad|Certigna|certSIGN|CFCA|Chambers|CommScope|DigitalSign|E-Tugra|emSign|GDCA|GTS|Hongkong|HARICA|Izenpe|Microsec|NAVER|NetLock|OISTE|OpenTrust|SZAFIR|TUBITAK|TWCA|Telia|Trustwave|TrustCor|Visa|vTrus|WoSign|Chunghwa|ePKI Root|Hotspot 2\.0|StartCom|EC-ACC|DST Root|SecureSign|Cybertrust|Deutsche Telekom|Certainly|SK ID|Firmaprofesional|Camerfirma|Equifax|e-Szigno|Disig|ACCV|LuxTrust|SECOM|Government Root|GlobalTrust'
+
+# Назначения (EKU), при которых сертификатом можно подделать сайт
+$script:CgEkuServerAuth = '1.3.6.1.5.5.7.3.1'
+$script:CgEkuAny        = '2.5.29.37.0'
+
+# Что за сертификат, по тому, кому он выдан. Порядок важен:
+# сначала узкие и известные, в конце — общие приметы.
+$script:CgCertProfiles = @(
+    @{ Kind = 'av';  Re = 'ESET SSL Filter|ESET'; Who = 'антивирус ESET'
+       What = 'Это сертификат вашего антивируса ESET. Им он проверяет защищённые сайты на вирусы: открывает HTTPS, смотрит и запечатывает обратно.'
+       Safe = 'Это нормально, пока ESET установлен и вы ему доверяете. Если ESET удалён, а сертификат остался — его стоит убрать.' }
+    @{ Kind = 'av';  Re = 'Kaspersky'; Who = 'антивирус Касперского'
+       What = 'Сертификат антивируса Касперского для проверки защищённых сайтов.'
+       Safe = 'Нормально, пока антивирус установлен. Остался после удаления — уберите.' }
+    @{ Kind = 'av';  Re = 'Avast|AVG'; Who = 'антивирус Avast/AVG'
+       What = 'Сертификат Avast/AVG для проверки HTTPS («Веб-экран»).'
+       Safe = 'Нормально, пока антивирус установлен.' }
+    @{ Kind = 'av';  Re = 'Bitdefender|Dr\.?Web|Sophos|Norton|Malwarebytes|AdGuard|NOD32|Comodo Internet Security'; Who = 'антивирус или фильтр рекламы'
+       What = 'Сертификат защитной программы, которая проверяет или фильтрует защищённые сайты. Ради этого она и читает HTTPS.'
+       Safe = 'Нормально, пока эта программа установлена и нужна вам.' }
+    @{ Kind = 'proxy'; Re = 'DO_NOT_TRUST|Fiddler|Charles Proxy|mitmproxy|PortSwigger|Burp|HTTP Toolkit|Proxyman|Telerik'; Who = 'отладочный прокси'
+       What = 'Сертификат отладочного прокси (Fiddler, Charles, mitmproxy, Burp). Такие программы ставят его, чтобы показать разработчику содержимое HTTPS.'
+       Safe = 'Пока он стоит, эта программа может читать весь ваш защищённый трафик. Если вы сейчас ничего не отлаживаете — его стоит убрать.' }
+    @{ Kind = 'dev'; Re = 'mkcert|localhost|IIS Express|ASP\.NET Core HTTPS|Development'; Who = 'сертификат разработчика'
+       What = 'Сертификат для разработки сайтов на этом компьютере (mkcert, IIS Express, ASP.NET).'
+       Safe = 'Опасен, только если его закрытый ключ утечёт. Не занимаетесь разработкой — уберите.' }
+    @{ Kind = 'local'; Re = 'Battle\.net|Blizzard|Razer|Local Cert|Overwolf|SteelSeries|Corsair|Logitech'; Who = 'программа на этом компьютере'
+       What = 'Сертификат, которым установленная программа (Battle.net, Razer и подобные) открывает защищённое соединение между сайтом в браузере и собой на этом же компьютере.'
+       Safe = 'Ключ у этой программы, и сама она трафик не читает. Но ограничений у сертификата нет: если ключ украдут, им можно подделать любой сайт. Пользуетесь программой — доверьте; удалили — уберите. Ограничивать назначение не стоит: связь сайта с программой перестанет работать.' }
+    @{ Kind = 'driver'; Re = 'USB\\VID_|libwdi|Zadig|Atmel|Microchip|Arduino|STMicro|Universal ?ADB|ClockworkMod|Koush|WinUSB|libusb|Digistump|Silicon Labs|CH340|WCH'; Who = 'драйвер USB-устройства'
+       What = 'Похоже на самодельный сертификат установщика драйвера USB-устройства (Zadig/libwdi, загрузчики микроконтроллеров, Universal ADB для Android). Им установщик подписал драйвер, чтобы Windows его приняла.'
+       Safe = 'Обычно его ставят программы для прошивки плат и телефонов. Уже установленный драйвер продолжит работать и без этого сертификата; понадобится он, только если драйвер придётся ставить заново.' }
+)
+
+# Через CryptoAPI: свойства сертификата в хранилище. Нужен, чтобы
+# сузить назначение сертификата, не удаляя его, — ровно то, что
+# делает «Свойства → Включить только следующие назначения» в certmgr.
+if (-not ('Cg.CertProp' -as [type])) {
+    Add-Type -Namespace 'Cg' -Name 'CertProp' -MemberDefinition @'
+[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+public struct BLOB { public int cbData; public System.IntPtr pbData; }
+[System.Runtime.InteropServices.DllImport("crypt32.dll", SetLastError = true)]
+public static extern bool CertSetCertificateContextProperty(System.IntPtr ctx, int propId, int flags, ref BLOB data);
+[System.Runtime.InteropServices.DllImport("crypt32.dll", SetLastError = true, EntryPoint = "CertSetCertificateContextProperty")]
+public static extern bool CertClearProperty(System.IntPtr ctx, int propId, int flags, System.IntPtr data);
+[System.Runtime.InteropServices.DllImport("crypt32.dll", SetLastError = true)]
+public static extern bool CertGetCertificateContextProperty(System.IntPtr ctx, int propId, byte[] data, ref int cb);
+public static byte[] Get(System.IntPtr ctx, int propId) {
+    int cb = 0;
+    if (!CertGetCertificateContextProperty(ctx, propId, null, ref cb) || cb == 0) return null;
+    byte[] b = new byte[cb];
+    if (!CertGetCertificateContextProperty(ctx, propId, b, ref cb)) return null;
+    return b;
+}
+public static bool Set(System.IntPtr ctx, int propId, byte[] value) {
+    if (value == null) return CertClearProperty(ctx, propId, 0, System.IntPtr.Zero);
+    System.IntPtr p = System.Runtime.InteropServices.Marshal.AllocHGlobal(value.Length);
+    try {
+        System.Runtime.InteropServices.Marshal.Copy(value, 0, p, value.Length);
+        BLOB bl = new BLOB(); bl.cbData = value.Length; bl.pbData = p;
+        return CertSetCertificateContextProperty(ctx, propId, 0, ref bl);
+    } finally { System.Runtime.InteropServices.Marshal.FreeHGlobal(p); }
+}
+'@ -ErrorAction SilentlyContinue
+}
+
+# Назначения сертификата словами и ответ на главный вопрос:
+# годится ли он, чтобы выдать себя за любой сайт.
+#
+# Назначение задают два места: расширение внутри самого сертификата
+# и свойство, которое хранилище держит рядом (его ставит certmgr и
+# наше «Ограничить назначение»). Действует пересечение. Пустой
+# список у Get-ChildItem Cert:\ означает и «ограничений нет», и
+# «не годится ни для чего» — поэтому читаем оба места сами.
+function Get-CgCertPurpose {
+    param($Cert)
+    $fromExt = $null
+    foreach ($e in @($Cert.Extensions)) {
+        if ($e.Oid.Value -eq '2.5.29.37') {
+            try {
+                $x = New-Object System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension($e, $e.Critical)
+                $fromExt = @($x.EnhancedKeyUsages | ForEach-Object { $_.Value })
+            } catch { }
+        }
+    }
+    $fromProp = $null
+    try {
+        $raw = [Cg.CertProp]::Get($Cert.Handle, 9)
+        if ($raw) {
+            $asn = New-Object System.Security.Cryptography.AsnEncodedData('2.5.29.37', $raw)
+            $x = New-Object System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension($asn, $false)
+            $fromProp = @($x.EnhancedKeyUsages | ForEach-Object { $_.Value })
+        }
+    } catch { }
+
+    $ekus = $null
+    if ($null -ne $fromExt -and $null -ne $fromProp) {
+        if ($fromExt -contains $script:CgEkuAny) { $ekus = $fromProp }
+        else { $ekus = @($fromExt | Where-Object { $fromProp -contains $_ -or $fromProp -contains $script:CgEkuAny }) }
+    } elseif ($null -ne $fromProp) { $ekus = $fromProp }
+    elseif ($null -ne $fromExt)    { $ekus = $fromExt }
+
+    $restricted = ($null -ne $ekus)
+    $ekus = @($ekus | Where-Object { $_ })
+    $canTls = (-not $restricted) -or ($ekus -contains $script:CgEkuServerAuth) -or ($ekus -contains $script:CgEkuAny)
+    $text = 'любые (ограничений нет)'
+    if ($restricted) {
+        if ($ekus.Count) {
+            $text = (($ekus | ForEach-Object { $n = (New-Object System.Security.Cryptography.Oid $_).FriendlyName; if ($n) { $n } else { $_ } }) -join ', ')
+        } else { $text = 'никакие — сертификат выключен' }
+    }
+    return [PSCustomObject]@{ CanTls = [bool]$canTls; Ekus = $ekus; Text = $text; Restricted = $restricted; ByProperty = ($null -ne $fromProp) }
+}
+
+function Get-CgCertProfile {
+    param([string]$Subject, [bool]$CodeOnly)
+    foreach ($p in $script:CgCertProfiles) {
+        if ($Subject -match $p.Re) { return $p }
+    }
+    # Примет нет, но сертификат разрешён только для подписи кода —
+    # это почти всегда установщик драйвера или самоподписанная программа.
+    if ($CodeOnly) {
+        return @{ Kind = 'driver'; Who = 'подпись программ или драйверов'
+                  What = 'Сертификат разрешён только для подписи программ или драйверов. Такие ставят установщики драйверов и самодельных программ, чтобы Windows приняла их подпись.'
+                  Safe = 'Читать трафик он не может. Если не помните, что ставили, — его можно убрать: уже установленное продолжит работать.' }
+    }
+    return @{ Kind = 'unknown'; Who = 'неизвестно'
+              What = 'Программа не узнаёт этот сертификат. Его поставил кто-то из установленных программ или вы сами.'
+              Safe = 'Найдите в интернете имя из строки «Кому выдан». Если это ваша программа — ограничьте назначение или доверьте. Если имя ничего не говорит — уберите (копия сохранится).' }
+}
+
+function Get-CgCertFindings {
+    $f = @()
+    $odd = @(Get-ChildItem Cert:\LocalMachine\Root -ErrorAction SilentlyContinue |
+             Where-Object { $_.Issuer -eq $_.Subject -and $_.Subject -notmatch $script:CgKnownCA })
+    if (-not $odd.Count) {
+        return @(New-CgFinding 'OK' 'Сертификаты' 'Посторонних корневых сертификатов не найдено')
+    }
+
+    foreach ($c in $odd) {
+        $nm = Get-CgSignerName $c.Subject
+        $pur = Get-CgCertPurpose $c
+        $codeOnly = ((-not $pur.CanTls) -and ($pur.Ekus -contains '1.3.6.1.5.5.7.3.3'))
+        $prof = Get-CgCertProfile $c.Subject $codeOnly
+        $expired = ($c.NotAfter -lt (Get-Date))
+
+        $sev = 'WARN'
+        $short = ''
+        if ($expired)                  { $sev = 'NOTE'; $short = 'срок истёк' }
+        elseif (-not $pur.CanTls)      { $sev = 'NOTE'; $short = 'трафик читать не может' }
+        elseif ($prof.Kind -eq 'av')   { $sev = 'INFO'; $short = $prof.Who }
+        elseif ($prof.Kind -eq 'local'){ $sev = 'NOTE'; $short = $prof.Who }
+        elseif ($prof.Kind -eq 'proxy'){ $sev = 'WARN'; $short = $prof.Who }
+        elseif ($prof.Who -and $prof.Kind -ne 'unknown') { $short = $prof.Who }
+
+        $tls = if ($expired) {
+            'Нет. Срок действия истёк, Windows им больше не пользуется.'
+        } elseif (-not $pur.CanTls) {
+            "Нет. Он разрешён только для: $($pur.Text). Подделать им сайт Windows не позволит, сколько бы его ни пытались."
+        } elseif ($prof.Kind -eq 'av') {
+            'Да, и для этого он и стоит: так антивирус проверяет защищённые сайты.'
+        } else {
+            'Да. Ограничений назначения у него нет: тот, у кого есть его закрытый ключ, может выдать себя за любой сайт, и браузер не заметит подмены.'
+        }
+
+        $key = 'нет — ключ хранится у того, кто выпустил сертификат'
+        if ($c.HasPrivateKey) { $key = 'да, ключ лежит на этом компьютере — значит, сертификат создала одна из ваших программ' }
+
+        $opts = @()
+        if ($pur.CanTls -and -not $expired -and $prof.Kind -notin @('av', 'local')) {
+            $opts += '• «Ограничить назначение» — сертификат останется, но для сайтов Windows перестанет его принимать. Самый безопасный шаг: программы, которым он нужен для подписи драйверов, продолжат работать.'
+        }
+        $opts += '• «Убрать сертификат» — он уйдёт из доверенных; копия сохранится, вернуть можно откатом.'
+        $opts += '• «Доверять» — если вы знаете, чей он, и хотите, чтобы программа о нём больше не спрашивала.'
+
+        $detail = @(
+            "Кому выдан:   $($c.Subject)"
+            "Действует до: $($c.NotAfter.ToString('dd.MM.yyyy'))"
+            "Отпечаток:    $($c.Thumbprint)"
+            "Назначения:   $($pur.Text)"
+            "Закрытый ключ на этом компьютере: $key"
+            ''
+            '— ЧТО ЭТО ТАКОЕ —'
+            'Корневой сертификат — печать, которой Windows верит без вопросов. Всё, что этой печатью заверено, браузер и система считают подлинным. Поэтому посторонняя печать в этом списке — повод разобраться, но ещё не взлом.'
+            ''
+            "— ЧЕЙ ОН, СКОРЕЕ ВСЕГО ($($prof.Who)) —"
+            $prof.What
+            ''
+            '— МОЖЕТ ЛИ ОН ЧИТАТЬ ВАШ ЗАЩИЩЁННЫЙ ТРАФИК —'
+            $tls
+            ''
+            '— БЕЗОПАСНО ЛИ ОСТАВИТЬ —'
+            $prof.Safe
+            ''
+            '— ЧТО МОЖНО СДЕЛАТЬ —'
+        ) + $opts
+
+        $title = 'Нестандартный корневой сертификат: {0}' -f $nm
+        if ($short) { $title += " — $short" }
+        $f += New-CgFinding $sev 'Сертификаты' $title ($detail -join "`n") '' '' "$nm certificate" `
+            -Target ([PSCustomObject]@{
+                Kind = 'cert'; Thumbprint = $c.Thumbprint; Store = 'Root'; Location = 'LocalMachine'
+                Subject = $c.Subject; Name = $nm; CanTls = [bool]($pur.CanTls -and -not $expired); Profile = $prof.Kind
+            })
+    }
+    return $f
+}
+
 
 # ------------------------------------------------------------
 # 3. Автозапуск
@@ -450,7 +662,7 @@ function Get-CgProcessList {
         if ($p.Path -and (Get-Command Test-CgTrustedFile -ErrorAction SilentlyContinue)) {
             # одна проверка на все области доверия: отпечаток, путь,
             # папка, «эта программа» и «этот издатель»
-            $trusted = Test-CgTrustedFile $p.Path '' $p.ParentPath $p.ParentName
+            $trusted = Test-CgTrustedFile $p.Path '' $p.ParentPath $p.ParentName $p.Ancestors
         }
         if ($trusted) {
             $lvl = 'OK'
@@ -460,13 +672,35 @@ function Get-CgProcessList {
             Severity = $lvl; Order = @{ 'CRIT' = 0; 'WARN' = 1; 'NOTE' = 2; 'OK' = 3 }[$lvl]
             Name = $p.Name; Id = $p.Id; Risk = $p.Risk; User = $p.User
             Path = $p.Path; ParentName = $p.ParentName; ParentId = $p.ParentId; ParentPath = $p.ParentPath
+            Ancestors = @($p.Ancestors)
             CommandLine = $p.CommandLine; Signature = $sigTxt
             Notes = ($p.Reasons -join '; ')
             Title = $p.Name; Hash = ''; Query = $p.Name
-            Detail = "Файл: $($p.Path)`nPID: $($p.Id)`nРодитель: $($p.ParentName) (PID $($p.ParentId))`nОт имени: $($p.User)`nПодпись: $sigTxt`nЗапущен: $($p.Started)`nКоманда: $($p.CommandLine)`n`n" + (($p.Reasons | ForEach-Object { '- ' + $_ }) -join "`n")
+            Detail = "Файл: $($p.Path)`nPID: $($p.Id)`nРодитель: $($p.ParentName) (PID $($p.ParentId))`n$(Format-CgChain $p.Ancestors)От имени: $($p.User)`nПодпись: $sigTxt`nЗапущен: $($p.Started)`nКоманда: $($p.CommandLine)`n`n" + (($p.Reasons | ForEach-Object { '- ' + $_ }) -join "`n")
         }
     }
     return $out
+}
+
+# Цепочка «кто кого запустил» одной строкой: по ней видно, что
+# railway.exe — это на самом деле Claude, а не сам по себе.
+function Format-CgChain {
+    param($Ancestors)
+    $a = @(@($Ancestors) | Where-Object { $_ -and $_.Name })
+    if ($a.Count -lt 2) { return '' }
+    return ('Цепочка: ' + (($a | ForEach-Object { $_.Name }) -join ' ← ') + "`n")
+}
+
+# Строка процесса в находках должна знать то же, что строка в
+# разделе «Процессы»: номер, родителя и предков. Иначе «Доверять»
+# из находок не может предложить «всё, что запускает Claude», а
+# доверие, выданное в другом разделе, сюда не доходит.
+function Add-CgProcFields {
+    param($Finding, $Proc)
+    foreach ($n in @('Id', 'ParentPath', 'ParentName', 'Ancestors')) {
+        $Finding | Add-Member -NotePropertyName $n -NotePropertyValue $Proc.$n -Force
+    }
+    return $Finding
 }
 
 function Get-CgProcessFindings {
@@ -479,7 +713,7 @@ function Get-CgProcessFindings {
         $f += New-CgFinding 'OK' 'Процессы' 'Процессов с признаками риска не найдено'
     } else {
         foreach ($p in $risky) {
-            $f += New-CgFinding $p.Severity 'Процессы' ('{0}  (PID {1}, риск {2})' -f $p.Name, $p.Id, $p.Risk) $p.Detail $p.Path '' $p.Name
+            $f += Add-CgProcFields (New-CgFinding $p.Severity 'Процессы' ('{0}  (PID {1}, риск {2})' -f $p.Name, $p.Id, $p.Risk) $p.Detail $p.Path '' $p.Name) $p
         }
     }
     return $f
@@ -505,11 +739,13 @@ function Get-CgNetworkFindings {
         if (-not $pr) { continue }
         $suspicious = ($pr.Risk -ge 14) -or (-not $pr.Path)
         if (-not $suspicious) { continue }
+        # доверенное вами в разделе «Процессы» не всплывает здесь заново
+        if ($pr.Severity -eq 'OK') { continue }
         $bad++
         $dests = ($byProc[$k] | Select-Object -Unique | Select-Object -First 10) -join ', '
         $sev = 'WARN'
         if ($pr.Risk -ge 60) { $sev = 'CRIT' }
-        $f += New-CgFinding $sev 'Сеть' ('{0} (PID {1}) выходит в интернет' -f $pr.Name, $k) ("Файл: $($pr.Path)`nПодпись: $($pr.Signature)`nКуда: $dests`n`n$($pr.Notes)") $pr.Path '' $pr.Name
+        $f += Add-CgProcFields (New-CgFinding $sev 'Сеть' ('{0} (PID {1}) выходит в интернет' -f $pr.Name, $k) ("Файл: $($pr.Path)`nПодпись: $($pr.Signature)`nКуда: $dests`n`n$($pr.Notes)") $pr.Path '' $pr.Name) $pr
     }
     if (-not $bad) { $f += New-CgFinding 'OK' 'Сеть' 'Все соединения принадлежат известным подписанным программам' }
     return $f
@@ -527,7 +763,18 @@ function Get-CgExtensionList {
                     ForEach-Object { Join-Path $_.FullName 'Extensions' } |
                     Where-Object { Test-Path -LiteralPath $_ }
         foreach ($er in $extRoots) {
+            $profName = Split-Path -Leaf (Split-Path -Parent $er)
             foreach ($idDir in (Get-ChildItem -LiteralPath $er -Directory -ErrorAction SilentlyContinue)) {
+                # Одно расширение в двух профилях браузера — это одно
+                # расширение. Две одинаковые строки «Adobe Acrobat» выглядели
+                # как две разные находки и удваивали счёт критичного.
+                $dup = $null
+                foreach ($o in $out) { if ($o.Browser -eq $b.Name -and $o.Id -eq $idDir.Name) { $dup = $o; break } }
+                if ($dup) {
+                    if ($dup.Profiles -notcontains $profName) { $dup.Profiles = @($dup.Profiles) + $profName }
+                    $dup.Detail = $dup.Detail -replace '(?m)^Профили: .*$', ('Профили: ' + (@($dup.Profiles) -join ', '))
+                    continue
+                }
                 $verDir = Get-ChildItem -LiteralPath $idDir.FullName -Directory -ErrorAction SilentlyContinue |
                           Sort-Object Name -Descending | Select-Object -First 1
                 if (-not $verDir) { continue }
@@ -563,12 +810,42 @@ function Get-CgExtensionList {
                 $hasAll = @($hostPerms | Where-Object { $_ -eq '<all_urls>' -or $_ -like '*://*/*' }).Count -gt 0
 
                 $sev = 'OK'; $why = ''
+                $fromStore = ("$($m.update_url)" -match '(?i)clients2\.google\.com|edge\.microsoft\.com|microsoftedge')
                 if ($hasCookies -and $hasAll) { $sev = 'CRIT'; $why = 'МОЖЕТ ЧИТАТЬ COOKIE НА ЛЮБОМ САЙТЕ — то есть войти в ваши аккаунты от вашего имени.' }
                 elseif ($hasCookies) { $sev = 'WARN'; $why = 'Имеет доступ к cookie на перечисленных сайтах.' }
                 elseif ($perms -contains 'debugger') { $sev = 'WARN'; $why = 'Право debugger — полный контроль над страницей, сильнее любого другого.' }
                 elseif ($perms -contains 'proxy') { $sev = 'WARN'; $why = 'Может менять настройки прокси — то есть куда идёт ваш трафик.' }
                 elseif ($perms -contains 'nativeMessaging') { $sev = 'WARN'; $why = 'Может общаться с программами на компьютере вне браузера.' }
                 elseif ($hit.Count) { $sev = 'NOTE' }
+
+                # Вторая проверка: что про расширение знает магазин. Сами права
+                # не меняются, меняется вероятность злого умысла: у расширения
+                # Adobe 346 миллионов пользователей и проверка магазина, у
+                # расширения, которого в магазине нет, — ни того, ни другого.
+                $verify = ''
+                if ($sev -in @('CRIT', 'WARN')) {
+                    $vd = Get-CgExtVerdict $idDir.Name
+                    if (-not $fromStore) {
+                        $verify = 'Поставлено не из магазина (нет адреса обновления) — так ставят и разработчики, и вредоносы. Перепроверить его по магазину нельзя.'
+                    } elseif (-not $vd) {
+                        $verify = 'Ещё не перепроверено по магазину — это сделает «Перепроверить» в разделе «Расширения».'
+                    } elseif (-not $vd.Listed) {
+                        $sev = 'CRIT'
+                        $verify = 'В магазине такого расширения НЕТ: его сняли с публикации, оно недоступно в вашей стране или его поставили в обход. Снятые расширения — частый след вредоноса; если это ваше и вы знаете, откуда оно, — нажмите «Доверять».'
+                    } else {
+                        $usersTxt = '{0:N0}' -f [double]$vd.Users
+                        $verify = "Магазин: «$($vd.Name)», пользователей: $usersTxt" + $(if ($vd.Rating) { ", оценка $($vd.Rating)" } else { '' }) + '.'
+                        if ([double]$vd.Users -ge 1000000) {
+                            $sev = 'NOTE'
+                            $verify += ' Это массовое расширение из магазина: права широкие, потому что без них оно не работает. Опасно, только если вы его не ставили.'
+                        } elseif ([double]$vd.Users -ge 100000 -and $sev -eq 'CRIT') {
+                            $sev = 'WARN'
+                            $verify += ' Известное расширение, но права у него максимальные — держите, только если пользуетесь.'
+                        } else {
+                            $verify += ' Пользователей мало — проверьте, что ставили его сами.'
+                        }
+                    }
+                }
 
                 # расширение, про которое вы уже разобрались и решили оставить
                 $tr = $null
@@ -584,12 +861,14 @@ function Get-CgExtensionList {
                 $out += [PSCustomObject]@{
                     Severity = $sev; Order = @{ 'CRIT' = 0; 'WARN' = 1; 'NOTE' = 2; 'OK' = 3 }[$sev]
                     Browser = $b.Name; Name = $nm; Id = $idDir.Name; Version = $verDir.Name
+                    Profiles = @($profName); FromStore = $fromStore; Verify = $verify
+                    ExtKey = "$($b.Name)|$($idDir.Name)"
                     Perms = (($hit | Select-Object -Unique) -join ', ')
                     Sites = (($hostPerms | Select-Object -Unique | Select-Object -First 8) -join ', ')
                     Why = $why; Path = $verDir.FullName
                     Title = $nm; Hash = ''
                     Query = ('Chrome extension ' + $idDir.Name + ' ' + $nm)
-                    Detail = "Браузер: $($b.Name)`nНазвание: $nm`nID: $($idDir.Name)`nВерсия: $($verDir.Name)`nОпасные права: $(($hit | Select-Object -Unique) -join ', ')`nСайты: $(($hostPerms | Select-Object -Unique | Select-Object -First 8) -join ', ')`n`n$why`n`nПапка: $($verDir.FullName)`nСтраница в магазине: https://chromewebstore.google.com/detail/$($idDir.Name)"
+                    Detail = "Браузер: $($b.Name)`nПрофили: $profName`nНазвание: $nm`nID: $($idDir.Name)`nВерсия: $($verDir.Name)`nОпасные права: $(($hit | Select-Object -Unique) -join ', ')`nСайты: $(($hostPerms | Select-Object -Unique | Select-Object -First 8) -join ', ')`n`n$why$(if ($verify) { "`n`nПерепроверка: $verify" })`n`nПапка: $($verDir.FullName)`nСтраница в магазине: https://chromewebstore.google.com/detail/$($idDir.Name)"
                 }
             }
         }
@@ -602,7 +881,12 @@ function Get-CgExtensionFindings {
     if ($null -eq $ExtensionList) { $ExtensionList = Get-CgExtensionList }
     $f = @()
     foreach ($e in ($ExtensionList | Where-Object { $_.Severity -in @('CRIT', 'WARN', 'NOTE') } | Sort-Object Order)) {
-        $f += New-CgFinding $e.Severity 'Расширения' ('[{0}] {1}' -f $e.Browser, $e.Name) $e.Detail $e.Path '' $e.Query
+        $x = New-CgFinding $e.Severity 'Расширения' ('[{0}] {1}' -f $e.Browser, $e.Name) $e.Detail $e.Path '' $e.Query
+        # Чтобы «Доверять» в находках доверяло расширению, а не строке
+        # с её текстом: иначе в разделе «Расширения» оно оставалось бы
+        # критичным, а после переименования — вернулось бы и сюда.
+        foreach ($n in @('Browser', 'Id', 'ExtKey')) { $x | Add-Member -NotePropertyName $n -NotePropertyValue $e.$n -Force }
+        $f += $x
     }
     if (-not ($ExtensionList | Where-Object { $_.Severity -in @('CRIT', 'WARN') })) {
         $f += New-CgFinding 'OK' 'Расширения' 'Расширений с опасными правами не найдено'
@@ -622,6 +906,109 @@ function Get-CgExtensionFindings {
         }
     }
     return $f
+}
+
+# ------------------------------------------------------------
+#  Вторая проверка расширений по магазину
+#
+#  Наружу уходит только идентификатор расширения — та же строка,
+#  что стоит в адресе его страницы в магазине. Ответ кладём в
+#  state\ext-verdicts.json: проверка дорогая, а мнение магазина о
+#  расширении за неделю не меняется.
+# ------------------------------------------------------------
+function Get-CgExtVerdictPath { Join-Path (Get-CgDir 'state') 'ext-verdicts.json' }
+
+$script:CgExtVerdicts = $null
+function Get-CgExtVerdicts {
+    if ($null -ne $script:CgExtVerdicts) { return $script:CgExtVerdicts }
+    $h = @{}
+    $p = Get-CgExtVerdictPath
+    if (Test-Path -LiteralPath $p) {
+        try {
+            $raw = Get-Content -LiteralPath $p -Raw -Encoding UTF8 | ConvertFrom-Json
+            foreach ($pr in $raw.PSObject.Properties) { $h[$pr.Name] = $pr.Value }
+        } catch { }
+    }
+    $script:CgExtVerdicts = $h
+    return $h
+}
+
+function Get-CgExtVerdict {
+    param([string]$Id)
+    $h = Get-CgExtVerdicts
+    if ($h.ContainsKey($Id)) { return $h[$Id] }
+    return $null
+}
+
+function Test-CgExtVerdictFresh {
+    param([string]$Id, [int]$Days = 7)
+    $v = Get-CgExtVerdict $Id
+    if (-not $v) { return $false }
+    try { return (((Get-Date) - [datetime]$v.Checked).TotalDays -lt $Days) } catch { return $false }
+}
+
+# Один запрос к магазину. Chrome Web Store отдаёт страницу, Edge —
+# JSON; в обоих случаях ищем название и число пользователей.
+function Invoke-CgExtStoreLookup {
+    param([string]$Id, [string]$Browser = 'Chrome')
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
+    $res = [PSCustomObject]@{ Id = $Id; Store = 'chrome'; Listed = $false; Users = 0; Rating = ''; Name = ''; Checked = (Get-Date).ToString('o'); Error = '' }
+    try {
+        $r = Invoke-WebRequest -UseBasicParsing -Uri ("https://chromewebstore.google.com/detail/{0}?hl=en" -f $Id) `
+                -Headers @{ 'Accept-Language' = 'en' } -TimeoutSec 20 -ErrorAction Stop
+        $html = "$($r.Content)"
+        $t = [regex]::Match($html, '<title>([^<]+?)\s*-\s*Chrome Web Store</title>')
+        if ($t.Success) {
+            $res.Listed = $true
+            $res.Name = [System.Net.WebUtility]::HtmlDecode($t.Groups[1].Value.Trim())
+            $u = [regex]::Match($html, '([\d,\.]+)\+?\s+users')
+            if ($u.Success) { $res.Users = [double](($u.Groups[1].Value -replace '[,\.]', '')) }
+            $rt = [regex]::Match($html, '([0-5]\.\d) out of 5')
+            if ($rt.Success) { $res.Rating = $rt.Groups[1].Value }
+            return $res
+        }
+    } catch { $res.Error = "$($_.Exception.Message)" }
+
+    # Расширения магазина Microsoft живут под другими номерами
+    if ($Browser -eq 'Edge') {
+        try {
+            $j = Invoke-RestMethod -Uri ("https://microsoftedge.microsoft.com/addons/getproductdetailsbycrxid/{0}" -f $Id) -TimeoutSec 20 -ErrorAction Stop
+            if ($j -and $j.name) {
+                $res.Store = 'edge'; $res.Listed = $true; $res.Error = ''
+                $res.Name = "$($j.name)"; $res.Users = [double]$j.activeInstallCount
+                if ($j.averageRating) { $res.Rating = ('{0:N1}' -f [double]$j.averageRating) }
+            }
+        } catch { if (-not $res.Error) { $res.Error = "$($_.Exception.Message)" } }
+    }
+    return $res
+}
+
+# Перепроверить то, что сейчас критично или требует внимания.
+# Ошибка сети — не вердикт: такие ответы не сохраняем, иначе
+# расширение записалось бы в «нет в магазине» из-за обрыва связи.
+function Invoke-CgExtVerify {
+    param($ExtensionList, [switch]$Force, [scriptblock]$Progress)
+    $h = Get-CgExtVerdicts
+    $todo = @(@($ExtensionList) | Where-Object { $_.FromStore -and $_.Severity -in @('CRIT', 'WARN') } |
+              Where-Object { $Force -or -not (Test-CgExtVerdictFresh $_.Id) })
+    $n = 0; $done = 0; $fail = 0
+    foreach ($e in $todo) {
+        $n++
+        if ($Progress) { & $Progress ("магазин: {0} ({1} из {2})" -f $e.Name, $n, $todo.Count) }
+        $v = Invoke-CgExtStoreLookup $e.Id $e.Browser
+        if ($v.Error -and -not $v.Listed) { $fail++; continue }
+        $h[$e.Id] = $v
+        $done++
+    }
+    if ($done) {
+        try {
+            $obj = New-Object PSObject
+            foreach ($k in $h.Keys) { $obj | Add-Member -NotePropertyName $k -NotePropertyValue $h[$k] -Force }
+            [IO.File]::WriteAllText((Get-CgExtVerdictPath), ($obj | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($true))
+        } catch { }
+    }
+    $script:CgExtVerdicts = $h
+    return [PSCustomObject]@{ Asked = $todo.Count; Done = $done; Failed = $fail }
 }
 
 # ------------------------------------------------------------
@@ -1309,10 +1696,15 @@ function Get-CgProcessStarts {
                     $notes += 'интерпретатор или системная утилита'
                 }
 
+                if ($sev -ne 'INFO' -and (Get-Command Test-CgTrustedFile -ErrorAction SilentlyContinue)) {
+                    $tr = Test-CgTrustedFile $img '' $parent (Split-Path -Leaf $parent)
+                    if ($tr) { $sev = 'INFO'; $notes += 'доверено вами' }
+                }
                 $null = $out.Add([PSCustomObject]@{
                     Severity = $sev; Order = @{ 'CRIT' = 0; 'WARN' = 1; 'NOTE' = 2; 'INFO' = 3 }[$sev]
                     Time = $e.TimeCreated; TimeText = $e.TimeCreated.ToString('HH:mm:ss')
                     Name = $nm; Path = $img; Command = $cmd
+                    ParentPath = $parent; ParentName = $(if ($parent) { Split-Path -Leaf $parent } else { '' })
                     Parent = $(if ($parent) { Split-Path -Leaf $parent } else { '' })
                     User = $h['SubjectUserName']; Source = 'журнал 4688'
                     Title = $nm; Hash = ''; Query = $nm

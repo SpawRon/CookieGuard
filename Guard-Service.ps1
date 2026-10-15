@@ -40,6 +40,8 @@ $script:Tray = $null
 try {
     $script:Tray = New-Object System.Windows.Forms.NotifyIcon
     $script:Tray.Icon = [System.Drawing.SystemIcons]::Shield
+    $ico = Join-Path $PSScriptRoot 'CookieGuard.ico'
+    if (Test-Path -LiteralPath $ico) { try { $script:Tray.Icon = New-Object System.Drawing.Icon $ico } catch { } }
     $script:Tray.Visible = $true
     $script:Tray.Text = 'CookieGuard — сторож'
 } catch { }

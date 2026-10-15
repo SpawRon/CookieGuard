@@ -100,6 +100,17 @@ function Invoke-CgTrustRow {
         return (Add-CgTrust -Type 'extension' -Key "$($Row.Browser)|$($Row.Id)" -Label $label -Note $note)
     }
 
+    # корневой сертификат — доверяем по отпечатку: имя у самодельного
+    # сертификата может совпасть с чужим, отпечаток — нет
+    if ($Row.PSObject.Properties['Target'] -and $Row.Target -and "$($Row.Target.Kind)" -eq 'cert') {
+        $label = "$($Row.Target.Name)"
+        $note = Show-CgPrompt -Title 'Больше про это не спрашивать' `
+            -Text 'Сертификат перестанет попадать в находки. Если его когда-нибудь подменят, у подмены будет другой отпечаток — и она попадёт.' `
+            -Subject "$label  ($($Row.Target.Thumbprint))" -Default 'знаю, чей он' -OkText 'Доверять'
+        if ($null -eq $note) { return $null }
+        return (Add-CgTrust -Type 'cert' -Key "$($Row.Target.Thumbprint)" -Label $label -Note $note)
+    }
+
     $path = Get-CgRowPath $Row
     if ($path -and (Test-Path -LiteralPath $path -PathType Leaf)) {
         # Родитель есть только у строки процесса. Для файла на диске его
@@ -108,12 +119,19 @@ function Invoke-CgTrustRow {
         $parentName = ''
         if ($Row.PSObject.Properties['ParentPath']) { $parentPath = [string]$Row.ParentPath }
         if ($Row.PSObject.Properties['ParentName']) { $parentName = [string]$Row.ParentName }
+        $anc = @()
+        if ($Row.PSObject.Properties['Ancestors']) { $anc = @($Row.Ancestors) }
 
-        $opts = Get-CgTrustOptions $path (Get-CgRowHash $Row) $parentPath $parentName
+        $opts = Get-CgTrustOptions $path (Get-CgRowHash $Row) $parentPath $parentName $anc
         $res = Show-CgTrustDialog -Subject $path -Options $opts
         if (-not $res) { return $null }
+        # «Родитель» и «всё семейство» несут в себе, чей именно родитель:
+        # для семейства это хозяин цепочки, а не ближайший cmd.exe.
+        $o = $res.Option
+        if ($o -and $o.PSObject.Properties['ParentPath']) { $parentPath = "$($o.ParentPath)"; $parentName = "$($o.ParentName)" }
+        $any = [bool]($o -and $o.PSObject.Properties['AnyChild'] -and $o.AnyChild)
         return (Add-CgTrust -Type 'file' -Path $path -Hash (Get-CgRowHash $Row) -Scope $res.Scope -Note $res.Note `
-                    -ParentPath $parentPath -ParentName $parentName)
+                    -ParentPath $parentPath -ParentName $parentName -AnyChild:$any)
     }
 
     # ни файла, ни расширения: доверяем самой находке

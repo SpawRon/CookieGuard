@@ -170,9 +170,11 @@ $script:CgThemeXaml = @'
         </Setter.Value>
       </Setter>
     </Style>
+    <!-- Ширина задаётся только вертикальной полосе. Раньше Width=11
+         стояла у всех, и горизонтальная полоса (журнал) выходила
+         квадратиком 11×11, за который нельзя было ухватиться. -->
     <Style TargetType="ScrollBar">
       <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="Width" Value="11"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ScrollBar">
@@ -189,13 +191,16 @@ $script:CgThemeXaml = @'
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="Orientation" Value="Horizontal">
-                <Setter Property="Height" Value="11"/>
                 <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
+      <Style.Triggers>
+        <Trigger Property="Orientation" Value="Vertical"><Setter Property="Width" Value="11"/><Setter Property="MinWidth" Value="11"/></Trigger>
+        <Trigger Property="Orientation" Value="Horizontal"><Setter Property="Height" Value="11"/><Setter Property="MinHeight" Value="11"/><Setter Property="Width" Value="Auto"/></Trigger>
+      </Style.Triggers>
     </Style>
 
     <!-- ============ кнопки ============ -->
@@ -587,6 +592,11 @@ $script:CgThemeXaml = @'
     </Style>
 
     <!-- ============ поля ввода ============ -->
+    <!-- Поле ввода: высоту задаёт стиль, а не каждое окно своей
+         цифрой. Прежние Height=38 при отступе 8 сверху и снизу
+         оставляли тексту впритык одну строку, и хвосты «р», «у», «д»
+         обрезались. Теперь отступ только по бокам, а по высоте текст
+         стоит по центру — сколько бы места ему ни дали. -->
     <Style TargetType="TextBox">
       <Setter Property="Background"  Value="{StaticResource ControlBg}"/>
       <Setter Property="Foreground"  Value="{StaticResource Text}"/>
@@ -594,21 +604,26 @@ $script:CgThemeXaml = @'
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="FontFamily"  Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize"    Value="13"/>
-      <Setter Property="Padding"     Value="11,8"/>
+      <Setter Property="MinHeight"   Value="36"/>
+      <Setter Property="Padding"     Value="10,0"/>
       <Setter Property="CaretBrush"  Value="{StaticResource Text}"/>
       <Setter Property="SelectionBrush" Value="{StaticResource Accent}"/>
+      <Setter Property="SelectionOpacity" Value="0.45"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="SnapsToDevicePixels" Value="True"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="TextBox">
             <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3">
-              <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" SnapsToDevicePixels="True">
+              <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                            HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"
                             VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="{StaticResource HoverLine}"/></Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -622,6 +637,7 @@ $script:CgThemeXaml = @'
       <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
       <Setter Property="Foreground" Value="#C2CBD6"/>
       <Setter Property="Padding"    Value="13,11"/>
+      <Setter Property="MinHeight"  Value="0"/>
       <Setter Property="IsReadOnly" Value="True"/>
       <Setter Property="VerticalContentAlignment" Value="Top"/>
       <Setter Property="Template">
@@ -629,7 +645,9 @@ $script:CgThemeXaml = @'
           <ControlTemplate TargetType="TextBox">
             <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                     BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="0">
-              <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+              <ScrollViewer x:Name="PART_ContentHost"
+                            HorizontalScrollBarVisibility="{TemplateBinding HorizontalScrollBarVisibility}"
+                            VerticalScrollBarVisibility="{TemplateBinding VerticalScrollBarVisibility}"/>
             </Border>
           </ControlTemplate>
         </Setter.Value>
@@ -643,18 +661,22 @@ $script:CgThemeXaml = @'
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="FontFamily"  Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize"    Value="13"/>
-      <Setter Property="Padding"     Value="11,8"/>
+      <Setter Property="MinHeight"   Value="36"/>
+      <Setter Property="Padding"     Value="10,0"/>
       <Setter Property="CaretBrush"  Value="{StaticResource Text}"/>
+      <Setter Property="SelectionBrush" Value="{StaticResource Accent}"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="PasswordBox">
             <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3">
-              <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" SnapsToDevicePixels="True">
+              <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                            HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"
                             VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
             </Border>
             <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="{StaticResource HoverLine}"/></Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -998,11 +1020,34 @@ $script:CgThemeXaml = @'
 #  которой подставляются общие стили. Replace, а не -replace:
 #  в стилях есть знаки, которые регулярное выражение съело бы.
 # ------------------------------------------------------------
+#
+# Значок. Окно живёт в процессе powershell.exe, и без своего значка
+# Windows рисует на панели задач значок PowerShell — даже у
+# установленной программы, запущенной через CookieGuard.exe.
+$script:CgIconPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'CookieGuard.ico'
+$script:CgIconImage = $null
+
+function Get-CgIconImage {
+    if ($script:CgIconImage) { return $script:CgIconImage }
+    if (-not (Test-Path -LiteralPath $script:CgIconPath)) { return $null }
+    try {
+        $dec = New-Object System.Windows.Media.Imaging.IconBitmapDecoder(
+            (New-Object Uri $script:CgIconPath), [System.Windows.Media.Imaging.BitmapCreateOptions]::None,
+            [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad)
+        # самый крупный кадр: из него Windows сама уменьшит до панели задач
+        $script:CgIconImage = @($dec.Frames | Sort-Object { $_.PixelWidth } -Descending)[0]
+    } catch { }
+    return $script:CgIconImage
+}
+
 function New-CgWindow {
     param([string]$Xaml)
     $full = $Xaml.Replace('<!--THEME-->', $script:CgThemeXaml)
     $reader = New-Object System.Xml.XmlNodeReader ([xml]$full)
-    return [Windows.Markup.XamlReader]::Load($reader)
+    $w = [Windows.Markup.XamlReader]::Load($reader)
+    $ico = Get-CgIconImage
+    if ($ico -and $w -is [System.Windows.Window]) { $w.Icon = $ico }
+    return $w
 }
 
 function Get-CgUiMap {

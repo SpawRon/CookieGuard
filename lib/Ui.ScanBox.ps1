@@ -1,6 +1,11 @@
 ﻿# ============================================================
 #  CookieGuard - Ui.ScanBox.ps1
-#  Окно проверки: бросьте сюда файл или папку.
+#  Страница «Проверка файлов»: бросьте файл или папку в окно.
+#
+#  Раньше это было отдельное окно, и путь к проверке занимал три
+#  щелчка: открыть окно, перетащить, закрыть. Теперь файл можно
+#  бросить в любое место главного окна — оно само откроет эту
+#  страницу.
 #
 #  Что оно решает само, не спрашивая человека:
 #    — что внутри папки вообще стоит проверять, а что нет;
@@ -27,29 +32,58 @@ $ErrorActionPreference = 'SilentlyContinue'
 # ------------------------------------------------------------
 #  Перетаскивание в окно с правами администратора
 #
-#  Windows не пропускает сообщения из обычного Проводника в
+#  Windows не пропускает перетаскивание из обычного Проводника в
 #  процесс с повышенными правами — иначе любая программа
-#  подсовывала бы данные в привилегированное окно. Нам это
-#  мешает: окно запускается от администратора, и перетаскивание
-#  молча не работает. Открываем ровно три сообщения, нужных для
-#  перетаскивания файлов, и ничего больше.
+#  подсовывала бы данные в привилегированное окно. Перетаскивание
+#  WPF идёт через OLE и так и не заработает, сколько фильтров ни
+#  открывай. Работает старый способ — сообщение WM_DROPFILES:
+#  снимаем OLE-приёмник окна, просим у Windows список файлов
+#  по-старому и открываем ровно три сообщения, нужных для этого.
 # ------------------------------------------------------------
-if (-not ('CgDropFilter' -as [type])) {
-    Add-Type -Name 'CgDropFilter' -Namespace 'Cg' -MemberDefinition @'
-[System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
-public static extern bool ChangeWindowMessageFilterEx(System.IntPtr hWnd, uint msg, uint action, System.IntPtr pChangeFilterStruct);
-'@ -ErrorAction SilentlyContinue
-}
-
-function Enable-CgDropForElevated {
-    param($Window)
-    try {
-        $h = (New-Object System.Windows.Interop.WindowInteropHelper($Window)).Handle
-        if ($h -eq [IntPtr]::Zero) { return }
-        foreach ($msg in @(0x0233, 0x0049, 0x004A)) {   # WM_DROPFILES, WM_COPYGLOBALDATA, WM_COPYDATA
-            $null = [Cg.CgDropFilter]::ChangeWindowMessageFilterEx($h, $msg, 1, [IntPtr]::Zero)
+if (-not ('Cg.DropTarget' -as [type])) {
+    Add-Type -ReferencedAssemblies PresentationFramework, PresentationCore, WindowsBase, System.Xaml -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Interop;
+namespace Cg {
+    public class DropArgs : EventArgs {
+        public string[] Files { get; private set; }
+        public DropArgs(string[] f) { Files = f; }
+    }
+    public class DropTarget {
+        [DllImport("shell32.dll")] static extern void DragAcceptFiles(IntPtr h, bool accept);
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern uint DragQueryFile(IntPtr d, uint i, StringBuilder s, uint cch);
+        [DllImport("shell32.dll")] static extern void DragFinish(IntPtr d);
+        [DllImport("ole32.dll")] static extern int RevokeDragDrop(IntPtr h);
+        [DllImport("user32.dll")] static extern bool ChangeWindowMessageFilterEx(IntPtr h, uint msg, uint action, IntPtr p);
+        public event EventHandler<DropArgs> Dropped;
+        public DropTarget(Window w) {
+            IntPtr h = new WindowInteropHelper(w).Handle;
+            HwndSource src = HwndSource.FromHwnd(h);
+            src.AddHook(Hook);
+            RevokeDragDrop(h);
+            DragAcceptFiles(h, true);
+            foreach (uint m in new uint[] { 0x0233, 0x0049, 0x004A }) ChangeWindowMessageFilterEx(h, m, 1, IntPtr.Zero);
         }
-    } catch { }
+        IntPtr Hook(IntPtr h, int msg, IntPtr w, IntPtr l, ref bool handled) {
+            if (msg != 0x0233) return IntPtr.Zero;
+            uint n = DragQueryFile(w, 0xFFFFFFFF, null, 0);
+            string[] files = new string[n];
+            for (uint i = 0; i < n; i++) {
+                StringBuilder sb = new StringBuilder(1024);
+                DragQueryFile(w, i, sb, 1024);
+                files[i] = sb.ToString();
+            }
+            DragFinish(w);
+            handled = true;
+            if (Dropped != null) Dropped(this, new DropArgs(files));
+            return IntPtr.Zero;
+        }
+    }
+}
+'@ -ErrorAction SilentlyContinue
 }
 
 # ------------------------------------------------------------
@@ -345,177 +379,77 @@ $script:CgSbVtScript = {
     }
 }
 
-$script:CgScanBoxXaml = @'
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="Проверка файлов — CookieGuard" Height="680" Width="1000" MinHeight="540" MinWidth="780"
-        WindowStyle="None" Background="#0C0D10" WindowStartupLocation="CenterOwner" AllowDrop="True">
-  <shell:WindowChrome.WindowChrome>
-    <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
-  </shell:WindowChrome.WindowChrome>
-  <Window.Resources>
-<!--THEME-->
-  </Window.Resources>
-
-  <Border BorderBrush="{StaticResource Line}" BorderThickness="1">
-    <Grid>
-      <Grid.RowDefinitions>
-        <RowDefinition Height="40"/>
-        <RowDefinition Height="Auto"/>
-        <RowDefinition Height="*"/>
-        <RowDefinition Height="Auto"/>
-      </Grid.RowDefinitions>
-
-      <Border Grid.Row="0" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
-        <Grid x:Name="SbTitleBar" Background="Transparent">
-          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
-            <TextBlock Text="&#xE721;" Style="{StaticResource Glyph}" FontSize="14" Foreground="{StaticResource Accent}"/>
-            <TextBlock Text="Проверка файлов" FontFamily="{StaticResource FontDisplay}" FontWeight="SemiBold" FontSize="13.5"
-                       Margin="10,0,0,0" VerticalAlignment="Center"/>
-          </StackPanel>
-          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button x:Name="SbMin"   Content="&#xE921;" Style="{StaticResource CaptionBtn}"/>
-            <Button x:Name="SbMax"   Content="&#xE922;" Style="{StaticResource CaptionBtn}"/>
-            <Button x:Name="SbClose" Content="&#xE8BB;" Style="{StaticResource CaptionClose}"/>
-          </StackPanel>
-        </Grid>
-      </Border>
-
-      <!-- Панель кнопок стоит вплотную к списку и делит с ним линию,
-           как панели над таблицами главного окна: вместе — один блок. -->
-      <Border Grid.Row="1" Style="{StaticResource Card}" Background="{StaticResource NavBg}" Padding="12,8" Margin="20,20,20,-1">
-        <Grid>
-          <StackPanel Orientation="Horizontal">
-            <Button x:Name="SbAddFiles"  Content="Выбрать файлы" Style="{StaticResource Primary}"/>
-            <Button x:Name="SbAddFolder" Content="Выбрать папку"/>
-            <Button x:Name="SbClear"     Content="Очистить" Style="{StaticResource Ghost}"/>
-          </StackPanel>
-          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-            <CheckBox x:Name="SbDeep" Content="заглядывать в архивы" IsChecked="True"/>
-            <Button x:Name="SbCheck" Content="Проверить на VirusTotal" Style="{StaticResource Primary}" Margin="6,0,0,0"/>
-          </StackPanel>
-        </Grid>
-      </Border>
-
-      <Grid Grid.Row="2" Margin="20,0,20,0">
-        <Border x:Name="SbDropHint" BorderBrush="{StaticResource Line}" BorderThickness="1" Background="{StaticResource WinBg}">
-          <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-            <Border Width="72" Height="72" BorderBrush="{StaticResource StrongLine}" BorderThickness="1" HorizontalAlignment="Center">
-              <TextBlock Text="&#xE8B5;" Style="{StaticResource Glyph}" FontSize="30" Foreground="{StaticResource Accent}"/>
-            </Border>
-            <TextBlock Text="Перетащите сюда файл или папку" Style="{StaticResource H2}" HorizontalAlignment="Center" Margin="0,22,0,0"/>
-            <TextBlock Text="Программа сама решит, что стоит проверять, распакует архив и спросит пароль, если он нужен."
-                       Style="{StaticResource Sub}" HorizontalAlignment="Center" TextAlignment="Center" MaxWidth="450" Margin="0,9,0,0"/>
-            <TextBlock x:Name="SbDropNote" Style="{StaticResource Sub}" FontSize="11.5" HorizontalAlignment="Center"
-                       TextAlignment="Center" MaxWidth="450" Margin="0,16,0,0" Foreground="#FFB340" Visibility="Collapsed"/>
-          </StackPanel>
-        </Border>
-
-        <Border x:Name="SbListBox" Style="{StaticResource Card}" Padding="0" Margin="0" Visibility="Collapsed">
-          <DataGrid x:Name="SbGrid">
-            <DataGrid.Columns>
-              <!-- Тема больше не красит строку целиком: важность
-                   показывает пометка в своём столбце, как в таблицах
-                   главного окна. Без столбца вердикт VirusTotal был бы
-                   виден только словами. -->
-              <DataGridTemplateColumn Header="УРОВЕНЬ" Width="96">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                      <Rectangle Style="{StaticResource SevMark}"/>
-                      <TextBlock Text="{Binding Severity}" Style="{StaticResource PillTextAuto}"/>
-                    </StackPanel>
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-              <DataGridTextColumn Header="ФАЙЛ"    Binding="{Binding Display}"  Width="2*" MinWidth="180"/>
-              <DataGridTextColumn Header="РАЗМЕР"  Binding="{Binding SizeText}" Width="85"/>
-              <DataGridTextColumn Header="ЧТО ЭТО" Binding="{Binding KindText}" Width="135"/>
-              <DataGridTextColumn Header="ПОДПИСЬ" Binding="{Binding SignText}" Width="150"/>
-              <DataGridTextColumn Header="ВЕРДИКТ" Binding="{Binding Verdict}"  Width="3*" MinWidth="220"/>
-            </DataGrid.Columns>
-          </DataGrid>
-        </Border>
-      </Grid>
-
-      <Border Grid.Row="3" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="16,6" Margin="0,20,0,0">
-        <Grid>
-          <TextBlock x:Name="SbStatus" Text="Пусто" Style="{StaticResource Stat}" TextTrimming="CharacterEllipsis" Margin="0,0,210,0"/>
-          <ProgressBar x:Name="SbProgress" Width="190" Height="2" HorizontalAlignment="Right" Visibility="Collapsed" IsIndeterminate="True"/>
-        </Grid>
-      </Border>
-    </Grid>
-  </Border>
-</Window>
-'@
-
-function Show-CgScanBox {
-    param($Owner, [string]$Root)
-
-    $w = New-CgWindow $script:CgScanBoxXaml
-    $u = Get-CgUiMap $w @('SbTitleBar', 'SbMin', 'SbMax', 'SbClose', 'SbAddFiles', 'SbAddFolder', 'SbClear',
-                          'SbDeep', 'SbCheck', 'SbDropHint', 'SbDropNote', 'SbListBox', 'SbGrid', 'SbStatus', 'SbProgress')
+# ------------------------------------------------------------
+#  Подключить страницу к главному окну
+#
+#  $U — элементы страницы (Sb*), $OnShow — как показать страницу:
+#  бросок файла в любое место окна сначала переключает на неё.
+# ------------------------------------------------------------
+function Initialize-CgScanPage {
+    param($Window, [string]$Root, $U, [scriptblock]$OnShow)
 
     $ctx = @{
-        Window = $w
-        U      = $u
+        Window = $Window
+        U      = $U
         Items  = (New-Object System.Collections.ObjectModel.ObservableCollection[object])
         Temp   = (New-Object System.Collections.ArrayList)
     }
-    $u.SbGrid.ItemsSource = $ctx.Items
-
-    if ($Owner) { $w.Owner = $Owner }
-    Add-CgWindowDrag $w $u.SbTitleBar
-    $u.SbMin.Add_Click({ $w.WindowState = 'Minimized' }.GetNewClosure())
-    $u.SbMax.Add_Click({
-        if ($w.WindowState -eq 'Maximized') { $w.WindowState = 'Normal' } else { $w.WindowState = 'Maximized' }
-    }.GetNewClosure())
-    $u.SbClose.Add_Click({ $w.Close() }.GetNewClosure())
+    $U.SbGrid.ItemsSource = $ctx.Items
+    $u = $U
+    $w = $Window
 
     # ---------- перетаскивание ----------
     # Кисти берём из темы, а не пишем цвет строкой: иначе после
-    # перетаскивания зона возвращалась бы не к тому тону, с которого
-    # начинала, — стоит теме сменить хоть один оттенок.
+    # перетаскивания зона возвращалась бы не к тому тону.
     $dz = @{
         Line = $w.FindResource('Line');   Bg   = $w.FindResource('WinBg')
         On   = $w.FindResource('Accent'); OnBg = $w.FindResource('ControlBg')
     }
+    $take = {
+        param([string[]]$Paths)
+        if (-not @($Paths).Count) { return }
+        if ($OnShow) { & $OnShow }
+        $null = $w.Activate()
+        Add-CgSbPaths $ctx @($Paths)
+    }.GetNewClosure()
 
-    $w.Add_DragOver({
-        param($s, $e)
-        if ($e.Data.GetDataPresent([Windows.DataFormats]::FileDrop)) {
-            $e.Effects = [Windows.DragDropEffects]::Copy
-            $u.SbDropHint.BorderBrush = $dz.On
-            $u.SbDropHint.Background = $dz.OnBg
-        } else {
-            $e.Effects = [Windows.DragDropEffects]::None
-        }
-        $e.Handled = $true
-    }.GetNewClosure())
-
-    $w.Add_DragLeave({
-        $u.SbDropHint.BorderBrush = $dz.Line
-        $u.SbDropHint.Background = $dz.Bg
-    }.GetNewClosure())
-
-    $w.Add_Drop({
-        param($s, $e)
-        $u.SbDropHint.BorderBrush = $dz.Line
-        $u.SbDropHint.Background = $dz.Bg
-        if (-not $e.Data.GetDataPresent([Windows.DataFormats]::FileDrop)) { return }
-        $e.Handled = $true
-        Add-CgSbPaths $ctx @($e.Data.GetData([Windows.DataFormats]::FileDrop))
-    }.GetNewClosure())
-
-    $w.Add_SourceInitialized({
-        Enable-CgDropForElevated $w
-        if (Test-CgAdmin) {
-            $u.SbDropNote.Foreground = '#7C8694'
-            $u.SbDropNote.Text = 'Если перетаскивание не сработает — так Windows ограждает окна с правами администратора. Тогда просто нажмите «Выбрать файлы».'
-            $u.SbDropNote.Visibility = 'Visible'
-        }
-    }.GetNewClosure())
+    if (Test-CgAdmin) {
+        # С правами администратора — только старым способом (см. выше).
+        # Подсветки зоны при наведении тут не бывает: Windows сообщает
+        # о файлах, только когда их уже отпустили.
+        $w.Add_SourceInitialized({
+            try {
+                $dt = New-Object Cg.DropTarget($w)
+                $dt.add_Dropped({ param($s, $e) & $take @($e.Files) }.GetNewClosure())
+                $ctx.DropTarget = $dt
+            } catch { }
+        }.GetNewClosure())
+    } else {
+        $w.AllowDrop = $true
+        $w.Add_DragOver({
+            param($s, $e)
+            if ($e.Data.GetDataPresent([Windows.DataFormats]::FileDrop)) {
+                $e.Effects = [Windows.DragDropEffects]::Copy
+                $u.SbDropHint.BorderBrush = $dz.On
+                $u.SbDropHint.Background = $dz.OnBg
+            } else {
+                $e.Effects = [Windows.DragDropEffects]::None
+            }
+            $e.Handled = $true
+        }.GetNewClosure())
+        $w.Add_DragLeave({
+            $u.SbDropHint.BorderBrush = $dz.Line
+            $u.SbDropHint.Background = $dz.Bg
+        }.GetNewClosure())
+        $w.Add_Drop({
+            param($s, $e)
+            $u.SbDropHint.BorderBrush = $dz.Line
+            $u.SbDropHint.Background = $dz.Bg
+            if (-not $e.Data.GetDataPresent([Windows.DataFormats]::FileDrop)) { return }
+            $e.Handled = $true
+            & $take @($e.Data.GetData([Windows.DataFormats]::FileDrop))
+        }.GetNewClosure())
+    }
 
     # ---------- выбор вручную ----------
     $u.SbAddFiles.Add_Click({
@@ -607,39 +541,11 @@ function Show-CgScanBox {
         $timer.Start()
     }.GetNewClosure())
 
-    # ---------- меню по правой кнопке ----------
-    Add-CgRowMenu $u.SbGrid {
-        param($row)
-        return @(
-            @{ Text = 'Доверять'; Glyph = 0xE8FB; Action = {
-                param($r)
-                $res = Invoke-CgTrustRow $r
-                if ($res -and $res.Ok) {
-                    $r.Severity = 'OK'
-                    $r.Verdict = 'доверено вами'
-                    $r.Check = $false
-                    $u.SbGrid.Items.Refresh()
-                    Set-CgSbStatus $ctx $res.Message
-                } elseif ($res -and -not $res.Ok) {
-                    $null = Show-CgDialog -Title 'Не удалось добавить в доверенные' -Text $res.Message -Kind 'warn'
-                }
-            } }
-            @{ Text = 'Показать в проводнике'; Glyph = 0xEC50; Action = { param($r) $null = Show-CgInExplorer $r } }
-            @{ Text = 'Открыть на VirusTotal'; Glyph = 0xE774; Action = { param($r) $null = Open-CgVirusTotal $r } }
-            @{ Text = 'Искать в интернете';    Glyph = 0xE721; Action = {
-                param($r) Start-Process ('https://duckduckgo.com/?q=' + [uri]::EscapeDataString("$($r.Name) вирус или нет"))
-            } }
-            @{ Separator = $true }
-            @{ Text = 'Копировать путь';       Glyph = 0xE8C8; Action = { param($r) $null = Copy-CgRowText $r.Path } }
-            @{ Text = 'Копировать подробности'; Glyph = 0xE8C8; Action = { param($r) $null = Copy-CgRowText $r.Detail } }
-        )
-    }.GetNewClosure()
-
     $w.Add_Closed({
         $timer.Stop()
         foreach ($d in $ctx.Temp) { Remove-CgTempDir $d }
     }.GetNewClosure())
 
     Update-CgSbView $ctx
-    $null = $w.ShowDialog()
+    return $ctx
 }

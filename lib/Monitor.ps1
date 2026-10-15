@@ -55,8 +55,13 @@ function New-CgMonitorState {
 function New-CgEvent {
     param(
         [string]$Severity, [string]$Kind, [string]$Title, [string]$Detail = '',
-        [string]$Process = '', [string]$Path = '', [int]$ProcId = 0, [string]$Hash = ''
+        [string]$Process = '', [string]$Path = '', [int]$ProcId = 0, [string]$Hash = '',
+        $Live = $null
     )
+    # Родитель и предки едут вместе с событием: без них «Доверять» на
+    # строке монитора не может предложить «всё, что запускает Claude».
+    $pp = ''; $pn = ''; $anc = @()
+    if ($Live) { $pp = "$($Live.ParentPath)"; $pn = "$($Live.ParentName)"; $anc = @($Live.Ancestors) }
     return [PSCustomObject]@{
         Time = Get-Date
         TimeText = (Get-Date -Format 'HH:mm:ss')
@@ -65,6 +70,7 @@ function New-CgEvent {
         Kind = $Kind; Title = $Title; Detail = $Detail
         Process = $Process; Path = $Path; ProcId = $ProcId; Hash = $Hash
         Query = $(if ($Process) { $Process } else { $Title })
+        ParentPath = $pp; ParentName = $pn; Ancestors = $anc
     }
 }
 
@@ -82,13 +88,26 @@ function Get-CgLiveProc {
     param([int]$ProcId)
     $p = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcId" -ErrorAction SilentlyContinue
     if (-not $p) { return $null }
-    $parentName = ''
-    $pp = Get-CimInstance Win32_Process -Filter "ProcessId=$($p.ParentProcessId)" -ErrorAction SilentlyContinue
-    if ($pp) { $parentName = $pp.Name }
+    # Предки по одному запросу на ступень: весь список процессов на
+    # каждое событие обходился бы дороже, чем пять точечных вопросов.
+    $tbl = @{ ([int]$ProcId) = $p }
+    $cur = $p
+    for ($i = 0; $i -lt 6; $i++) {
+        $ppid = [int]$cur.ParentProcessId
+        if ($ppid -le 4 -or $tbl.ContainsKey($ppid)) { break }
+        $pp = Get-CimInstance Win32_Process -Filter "ProcessId=$ppid" -ErrorAction SilentlyContinue
+        if (-not $pp) { break }
+        $tbl[$ppid] = $pp
+        $cur = $pp
+    }
+    $anc = @(Get-CgAncestors $tbl ([int]$ProcId))
+    $parentName = ''; $parentPath = ''
+    if ($anc.Count) { $parentName = $anc[0].Name; $parentPath = $anc[0].Path }
     return [PSCustomObject]@{
         Id = $ProcId; Name = $p.Name; Path = (Get-CgNormPath $p.ExecutablePath)
         CommandLine = $p.CommandLine; ParentId = [int]$p.ParentProcessId
-        ParentName = $parentName; Started = $p.CreationDate
+        ParentName = $parentName; ParentPath = $parentPath; Ancestors = $anc
+        Started = $p.CreationDate
         Risk = 0; Reasons = @()
     }
 }
@@ -154,12 +173,14 @@ function Resolve-CgAccessEvent {
 
     # доверенная программа (например, вы сами пометили Claude) — не тревога
     if (Get-Command Test-CgTrustedFile -ErrorAction SilentlyContinue) {
-        $tr = Test-CgTrustedFile $accessorPath $hash
+        $tr = $null
+        if ($live) { $tr = Test-CgTrustedFile $accessorPath $hash $live.ParentPath $live.ParentName $live.Ancestors }
+        else { $tr = Test-CgTrustedFile $accessorPath $hash }
         if ($tr) {
             return New-CgEvent 'NOTE' 'Доступ' ("$accessorName обратился к cookie — доверено вами") (
                 "Файл: $obj`nЧто делал: $kind`nПрограмма: $accessorPath`nВы пометили её доверенной" +
                 $(if ($tr.Note) { ": $($tr.Note)" } else { '.' })
-            ) $accessorName $accessorPath $procId $hash
+            ) $accessorName $accessorPath $procId $hash $live
         }
     }
 
@@ -215,10 +236,10 @@ function Resolve-CgAccessEvent {
         # Знать об этом полезно, пугать — не за что.
         $extra = ''
         if ($kind -match 'смена прав доступа') { $extra = "`n`nСмена прав — так выглядит установка аудита, в том числе самим CookieGuard." }
-        return New-CgEvent 'WARN' 'Доступ' ('Посторонняя программа трогала файл cookie: {0} ({1})' -f $accessorName, $kind) (($lines -join "`n") + $extra) $accessorName $accessorPath $procId $hash
+        return New-CgEvent 'WARN' 'Доступ' ('Посторонняя программа трогала файл cookie: {0} ({1})' -f $accessorName, $kind) (($lines -join "`n") + $extra) $accessorName $accessorPath $procId $hash $live
     }
 
-    return New-CgEvent 'CRIT' 'Доступ' ('ПОСТОРОННЯЯ ПРОГРАММА ЧИТАЕТ БАЗУ COOKIE: {0}' -f $accessorName) ($lines -join "`n") $accessorName $accessorPath $procId $hash
+    return New-CgEvent 'CRIT' 'Доступ' ('ПОСТОРОННЯЯ ПРОГРАММА ЧИТАЕТ БАЗУ COOKIE: {0}' -f $accessorName) ($lines -join "`n") $accessorName $accessorPath $procId $hash $live
 }
 
 # ------------------------------------------------------------
@@ -234,7 +255,7 @@ function Resolve-CgNewProcess {
 
     # доверенная программа — молчим
     if ($p.Path -and (Get-Command Test-CgTrustedFile -ErrorAction SilentlyContinue)) {
-        if (Test-CgTrustedFile $p.Path) { return $null }
+        if (Test-CgTrustedFile $p.Path '' $p.ParentPath $p.ParentName $p.Ancestors) { return $null }
     }
 
     $detail = "Файл: $($p.Path)`nPID: $($p.Id)`nРодитель: $($p.ParentName) (PID $($p.ParentId))`nКоманда: $($p.CommandLine)`n`n" +
@@ -244,7 +265,7 @@ function Resolve-CgNewProcess {
         $hash = Get-CgHash $p.Path
         $null = Save-CgEvidence 'process' $p
     }
-    return New-CgEvent $lvl 'Процесс' ('Запустился подозрительный процесс: {0} (риск {1})' -f $p.Name, $p.Risk) $detail $p.Name $p.Path $p.Id $hash
+    return New-CgEvent $lvl 'Процесс' ('Запустился подозрительный процесс: {0} (риск {1})' -f $p.Name, $p.Risk) $detail $p.Name $p.Path $p.Id $hash $p
 }
 
 # ------------------------------------------------------------

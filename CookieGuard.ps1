@@ -33,6 +33,23 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 $ErrorActionPreference = 'Continue'
 
 # ------------------------------------------------------------
+#  Своё место на панели задач
+#
+#  Окно живёт в процессе powershell.exe, и Windows группирует его
+#  с PowerShell: на панели задач значок PowerShell, при наведении —
+#  «Windows PowerShell». Собственный идентификатор приложения
+#  отделяет окно от PowerShell, а значок окна (его ставит
+#  New-CgWindow) Windows тогда и показывает.
+# ------------------------------------------------------------
+if (-not ('Cg.AppId' -as [type])) {
+    Add-Type -Namespace 'Cg' -Name 'AppId' -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+public static extern int SetCurrentProcessExplicitAppUserModelID(string id);
+'@ -ErrorAction SilentlyContinue
+}
+try { $null = [Cg.AppId]::SetCurrentProcessExplicitAppUserModelID('CookieGuard.App') } catch { }
+
+# ------------------------------------------------------------
 #  Загрузка окна
 #
 #  Разметка вынесена в lib\Ui.MainXaml.ps1, стили — в
@@ -67,7 +84,9 @@ foreach ($n in @('ChipAdmin','ChipAudit','ChipMon','BtnScan','BtnMon','Cards','B
                  'SearchBox','SearchHint','SearchPop','SearchList',
                  'TabFindBad','TabFindCrit','TabFindWarn','TabFindAll',
                  'HeroHead','HeroSub','HeroGo','HeroCrit','HeroWarn','HeroQuar','HeroTotal',
-                 'HeroBarCrit','HeroBarWarn','HeroBarRest')) {
+                 'HeroBarCrit','HeroBarWarn','HeroBarRest',
+                 'BtnFixAll','BtnFixAll2','BtnExtVerify',
+                 'SbAddFiles','SbAddFolder','SbClear','SbDeep','SbCheck','SbDropHint','SbListBox','SbGrid','SbStatus','SbProgress')) {
     $ui[$n] = $win.FindName($n)
 }
 
@@ -621,9 +640,84 @@ function Invoke-CgTrustSelected {
     Set-Status $r.Message
     Reset-CgTrustCache
     Refresh-Trust
-    if ($app.Findings.Count) { $app.Findings = @(Set-CgTrustOnFindings $app.Findings); Show-Findings }
-    if ($app.Exts.Count) { Refresh-Exts }
-    if ($app.Procs.Count) { Refresh-Procs }
+    Update-CgAfterTrust
+}
+
+# ------------------------------------------------------------
+#  После «Доверять»: убрать доверенное отовсюду, сразу
+#
+#  Раньше после доверия заново собирался только список процессов,
+#  и то в фоне: в находках строка оставалась, монитор продолжал
+#  показывать старые события, а соседний процесс той же программы
+#  с другим номером никуда не девался. Человек жал «Проверить
+#  систему» ещё раз, чтобы увидеть, что доверие сработало.
+#  Теперь каждая уже собранная таблица перепроверяется на месте:
+#  подписи берутся из кеша, поэтому это быстро.
+# ------------------------------------------------------------
+function Test-CgRowTrusted {
+    param($Row)
+    if (-not $Row) { return $null }
+    $path = ''; $hash = ''; $pp = ''; $pn = ''; $anc = @()
+    if ($Row.PSObject.Properties['Path'])       { $path = [string]$Row.Path }
+    if ($Row.PSObject.Properties['Hash'])       { $hash = [string]$Row.Hash }
+    if ($Row.PSObject.Properties['ParentPath']) { $pp = [string]$Row.ParentPath }
+    if ($Row.PSObject.Properties['ParentName']) { $pn = [string]$Row.ParentName }
+    if ($Row.PSObject.Properties['Ancestors'])  { $anc = @($Row.Ancestors) }
+    if ($Row.PSObject.Properties['ExtKey'] -and $Row.ExtKey) {
+        $t = Test-CgTrusted 'extension' ([string]$Row.ExtKey)
+        if ($t) { return $t }
+    }
+    if ($path -and (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return (Test-CgTrustedFile $path $hash $pp $pn $anc)
+    }
+    return $null
+}
+
+function Update-CgAfterTrust {
+    if ($app.Findings.Count) {
+        $app.Findings = @(Set-CgTrustOnFindings $app.Findings)
+        Show-Findings
+    }
+    if ($app.Procs.Count) {
+        foreach ($p in $app.Procs) {
+            if ($p.Severity -eq 'OK') { continue }
+            $t = Test-CgRowTrusted $p
+            if ($t) {
+                $p.Severity = 'OK'; $p.Order = 3
+                $p.Notes = 'ДОВЕРЕНО ВАМИ' + $(if ($t.Note) { ": $($t.Note)" } else { '' })
+                $p.Risk = 0
+            }
+        }
+        Show-Procs
+    }
+    if ($app.Exts.Count) {
+        foreach ($e in $app.Exts) {
+            if ($e.Severity -eq 'OK') { continue }
+            if (Test-CgTrusted 'extension' ("$($e.Browser)|$($e.Id)")) { $e.Severity = 'OK'; $e.Order = 3; $e.Verify = 'доверено вами' }
+        }
+        Show-Exts
+    }
+    if ($app.Runs.Count) {
+        foreach ($r in $app.Runs) {
+            if ($r.Severity -in @('OK', 'INFO')) { continue }
+            if (Test-CgRowTrusted $r) { $r.Severity = 'INFO'; $r.Order = 3 }
+        }
+        Show-Runs
+    }
+    # монитор: доверенные события просто уходят из ленты
+    for ($i = $app.MonItems.Count - 1; $i -ge 0; $i--) {
+        $m = $app.MonItems[$i]
+        if ($m.Severity -in @('CRIT', 'WARN') -and (Test-CgRowTrusted $m)) { $app.MonItems.RemoveAt($i) }
+    }
+    if ($script:CgScan) {
+        foreach ($r in $script:CgScan.Items) {
+            if ($r.Severity -eq 'OK') { continue }
+            if (Test-CgRowTrusted $r) { $r.Severity = 'OK'; $r.Verdict = 'доверено вами'; $r.Check = $false }
+        }
+        $ui.SbGrid.Items.Refresh()
+    }
+    # строка, которой только что доверились, больше не выбрана
+    Show-Detail $null
 }
 
 $ui.BtnTrust.Add_Click({ Invoke-CgTrustSelected })
@@ -694,6 +788,8 @@ function Show-CgNotify {
         if (-not $script:TrayIcon) {
             $script:TrayIcon = New-Object System.Windows.Forms.NotifyIcon
             $script:TrayIcon.Icon = [System.Drawing.SystemIcons]::Shield
+            $icoFile = Join-Path $PSScriptRoot 'CookieGuard.ico'
+            if (Test-Path -LiteralPath $icoFile) { try { $script:TrayIcon.Icon = New-Object System.Drawing.Icon $icoFile } catch { } }
             $script:TrayIcon.Text = 'CookieGuard'
             $script:TrayIcon.Visible = $true
             # клик по уведомлению поднимает окно
@@ -835,7 +931,7 @@ $ui.BtnGuardOff.Add_Click({
 # ------------------------------------------------------------
 #  Выбор строки в любой таблице
 # ------------------------------------------------------------
-foreach ($g in @($ui.GridMon, $ui.GridFind, $ui.GridProc, $ui.GridExt, $ui.GridAuto, $ui.GridRun, $ui.GridQuar, $ui.GridTrust)) {
+foreach ($g in @($ui.GridMon, $ui.GridFind, $ui.GridProc, $ui.GridExt, $ui.GridAuto, $ui.GridRun, $ui.GridQuar, $ui.GridTrust, $ui.SbGrid)) {
     $g.Add_SelectionChanged({ Show-Detail $this.SelectedItem })
 }
 
@@ -963,10 +1059,116 @@ function Show-Findings {
     $w = @($app.Findings | Where-Object { $_.Severity -eq 'WARN' }).Count
     $n = @($app.Findings | Where-Object { $_.Severity -eq 'NOTE' }).Count
     $ui.ScanStats.Text = "критично: $c    внимание: $w    заметки: $n    всего проверок: $($app.Findings.Count)"
+    Update-CgFixAllButton
+}
+
+# ------------------------------------------------------------
+#  «Исправить всё»
+#
+#  Одно окно со списком всего, что программа умеет исправить сама,
+#  — вместо того чтобы открывать каждую находку и жать кнопку в
+#  ней. Каждой находке подбирается одно исправление: обратимое и
+#  самое узкое из подходящих. «Опасные» (в карантин, удалить)
+#  в список не попадают — их делают по одной, глядя на находку.
+#  Одинаковые исправления сливаются: «PlayerDebugMode во всех
+#  версиях Adobe» встаёт одной строкой, а не восемнадцатью.
+# ------------------------------------------------------------
+function Get-CgFixAllPlan {
+    $out = @()
+    $seen = @{}
+    foreach ($f in @($app.Findings | Where-Object { $_.Severity -in @('CRIT', 'WARN') } | Sort-Object Order)) {
+        $fx = @(Get-CgFixers $f | Where-Object { -not $_.Risky })
+        if (-not $fx.Count) { continue }
+        $all = @($fx | Where-Object { $_.Id -like '*-all' })
+        $pick = $(if ($all.Count) { $all[0] } else { $fx[0] })
+        $key = $(if ($pick.Id -like '*-all') { $pick.Id } else { "$($pick.Id)|$($f.Area)|$($f.Title)" })
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
+        $out += [PSCustomObject]@{ Finding = $f; Fixer = $pick }
+    }
+    return $out
+}
+
+function Update-CgFixAllButton {
+    $n = @(Get-CgFixAllPlan).Count
+    if ($n) {
+        $ui.BtnFixAll.Content = "Исправить всё ($n)"
+        $ui.BtnFixAll.IsEnabled = $true
+        $ui.BtnFixAll2.Content = "Исправить всё ($n)"
+        $ui.BtnFixAll2.Visibility = 'Visible'
+    } else {
+        $ui.BtnFixAll.Content = 'Исправить всё'
+        $ui.BtnFixAll.IsEnabled = $false
+        $ui.BtnFixAll2.Visibility = 'Collapsed'
+    }
+}
+
+function Invoke-CgFixAll {
+    $plan = @(Get-CgFixAllPlan)
+    if (-not $plan.Count) {
+        $null = Show-CgDialog -Title 'Исправлять нечего' -Kind 'info' `
+            -Text 'У оставшихся находок нет безопасного исправления в один щелчок. Откройте находку — справа будет сказано, что с ней делать, или нажмите «Доверять».'
+        return
+    }
+    $items = @()
+    foreach ($x in $plan) {
+        $what = $x.Fixer.Title
+        $sub = "$($x.Finding.Area): $($x.Finding.Title)"
+        if ($x.Fixer.Id -like '*-all') { $sub = "$($x.Finding.Area): все такие находки разом" }
+        # Подмену запуска на пустышку systray.exe почти всегда делают
+        # намеренно — так глушат обновления и телеметрию. Отмечать её
+        # за человека значило бы молча включить то, что он выключил.
+        $on = $true
+        if ($x.Fixer.Id -eq 'ifeo-remove' -and "$($x.Finding.Title)" -like 'Запуск программы заблокирован*') {
+            $on = $false
+            $sub += ' — похоже, отключено намеренно; отмечайте, только если это сделали не вы'
+        }
+        # Автозапуск. Мёртвую запись (файла уже нет) убираем смело. Живую
+        # программу — нет: «из AppData» ещё не значит «вредонос», а убрать
+        # из автозапуска LM Studio или помощника Razer за человека — это
+        # сломать ему привычное, ничего не выиграв.
+        if ($x.Fixer.Id -in @('run-remove', 'task-disable') -and $x.Finding.Target) {
+            $file = "$($x.Finding.Target.File)"
+            if ($file -and -not (Test-Path -LiteralPath $file)) {
+                $sub += ' — файла уже нет, запись мёртвая'
+            } elseif ($x.Finding.Severity -ne 'CRIT') {
+                $on = $false
+                $sub += ' — программа на месте; отмечайте, если она не нужна при старте Windows'
+            }
+        }
+        $items += [PSCustomObject]@{ Title = $what; Sub = $sub; Checked = $on; Risky = $false }
+    }
+    $left = @($app.Findings | Where-Object { $_.Severity -in @('CRIT', 'WARN') }).Count - $plan.Count
+    $txt = 'Каждое исправление обратимо: прежнее значение сохраняется в записи отката. Снимите галочку с того, что вы оставили намеренно.'
+    if ($left -gt 0) { $txt += " Остальное ($left) так не чинится — это файлы и программы, решение по ним за вами." }
+    $sel = Show-CgChecklistDialog -Title ("Исправить сразу: {0}" -f $plan.Count) -Text $txt -Items $items -OkText 'Исправить'
+    if ($null -eq $sel) { Set-Status 'Исправление отменено'; return }
+    $sel = @($sel)
+
+    Set-Busy $true 'Исправляю...'
+    $ok = 0; $bad = @()
+    foreach ($i in $sel) {
+        $x = $plan[$i]
+        Set-Status ("Исправляю: {0}" -f $x.Fixer.Title)
+        $r = Invoke-CgFix $x.Finding $x.Fixer
+        if ($r.Ok) { $ok++ } else { $bad += ("{0}: {1}" -f $x.Finding.Title, $r.Message) }
+    }
+    Set-Busy $false
+
+    $msg = "Исправлено: $ok из $($sel.Count). Записи отката лежат в папке undo рядом с журналами."
+    if ($bad.Count) {
+        $null = Show-CgDialog -Title 'Исправлено не всё' -Text $msg -Subject (($bad | Select-Object -First 6) -join "`n") -Kind 'warn'
+    } else {
+        $null = Show-CgDialog -Title 'Готово' -Text ($msg + ' Сейчас программа проверит систему заново, чтобы показать, что осталось.') -Kind 'ok'
+    }
+    Set-Status $msg
+    Start-Scan
 }
 
 $ui.BtnScan.Add_Click({ Start-Scan })
 $ui.BtnScan2.Add_Click({ Start-Scan })
+$ui.BtnFixAll.Add_Click({ Invoke-CgFixAll })
+$ui.BtnFixAll2.Add_Click({ Invoke-CgFixAll })
 $ui.ChkOnlyBad.Add_Click({ Show-Findings })
 foreach ($tb in @($ui.TabFindBad, $ui.TabFindCrit, $ui.TabFindWarn, $ui.TabFindAll)) {
     $tb.Add_Click({ Show-Findings })
@@ -1016,7 +1218,21 @@ $bgScript = {
             }
             'basediff' { $sync.BgResult = @(Compare-CgBaseline -Progress { param($t) $sync.ScanStep = $t }) }
             'procs' { $sync.BgResult = @(Get-CgProcessList) }
-            'exts'  { $sync.BgResult = @(Get-CgExtensionList) }
+            'exts'  {
+                $l = @(Get-CgExtensionList)
+                # Перепроверка по магазину — заодно, если в списке есть
+                # непроверенное критичное: уходит только номер расширения.
+                if (@($l | Where-Object { $_.FromStore -and $_.Severity -in @('CRIT', 'WARN') -and -not (Test-CgExtVerdictFresh $_.Id) }).Count) {
+                    $sync.ScanStep = 'перепроверяю по магазину'
+                    $null = Invoke-CgExtVerify $l -Progress { param($t) $sync.ScanStep = $t }
+                    $l = @(Get-CgExtensionList)
+                }
+                $sync.BgResult = $l
+            }
+            'extverify' {
+                $null = Invoke-CgExtVerify @(Get-CgExtensionList) -Force -Progress { param($t) $sync.ScanStep = $t }
+                $sync.BgResult = @(Get-CgExtensionList)
+            }
             'auto'  { $sync.BgResult = @(Get-CgAutorunList) }
             'runs'  { $sync.BgResult = @(Get-CgProcessStarts -Hours 6) }
             'vt'    {
@@ -1094,6 +1310,14 @@ function Refresh-Log {
 $ui.BtnProcRefresh.Add_Click({ Refresh-Procs })
 $ui.ChkOnlyRisky.Add_Click({ if ($app.Procs.Count) { Show-Procs } })
 $ui.BtnExtRefresh.Add_Click({ Refresh-Exts })
+$ui.BtnExtVerify.Add_Click({
+    if (-not @($app.Exts | Where-Object { $_.Severity -in @('CRIT', 'WARN') -or $_.Verify }).Count) {
+        if (-not $app.Exts.Count) { Refresh-Exts; return }
+        Set-Status 'Перепроверять нечего: критичных расширений нет'
+        return
+    }
+    Start-BgTask 'extverify' 'Перепроверяю расширения по магазину...'
+})
 $ui.BtnAutoRefresh.Add_Click({ Refresh-Autoruns })
 $ui.BtnRunRefresh.Add_Click({ Refresh-Runs })
 $ui.ChkRunOnlyBad.Add_Click({ if ($app.Runs.Count) { Show-Runs } })
@@ -1376,7 +1600,17 @@ $timer.Add_Tick({
         $app.BgPs = $null; $app.BgRs = $null
         switch ($kind) {
             'procs' { $app.Procs = $res;    Show-Procs;    Set-Busy $false 'Список процессов обновлён' }
-            'exts'  { $app.Exts = $res;     Show-Exts;     Set-Busy $false 'Расширения обновлены' }
+            { $_ -in @('exts', 'extverify') } {
+                $app.Exts = $res; Show-Exts
+                # находки по расширениям — из того же свежего списка
+                if ($app.Findings.Count) {
+                    $app.Findings = @($app.Findings | Where-Object { $_.Area -ne 'Расширения' }) + @(Set-CgTrustOnFindings @(Get-CgExtensionFindings $res))
+                    Show-Findings
+                    Update-Cards
+                }
+                $nv = @($res | Where-Object { $_.Verify -match '^Магазин' }).Count
+                Set-Busy $false $(if ($kind -eq 'extverify') { "Перепроверено по магазину: $nv" } else { 'Расширения обновлены' })
+            }
             'auto'  { $app.Autoruns = $res; Show-Autoruns; Set-Busy $false 'Автозапуск обновлён' }
             'runs'  { $app.Runs = $res;     Show-Runs;     Set-Busy $false 'История запусков обновлена' }
             'basenew' {
@@ -1432,6 +1666,9 @@ $timer.Add_Tick({
         Set-Status ("Проверка закончена: критичных {0}, требуют внимания {1}. Нажмите на строку, чтобы увидеть подробности." -f $c, $w)
         Write-CgLog 'INFO' "Проверка из окна: CRIT=$c WARN=$w"
         Show-CgPage 'find'
+        if (@($app.Findings | Where-Object { $_.Area -eq 'Расширения' -and $_.Severity -in @('CRIT', 'WARN') -and $_.Detail -match 'Ещё не перепроверено' }).Count) {
+            Start-BgTask 'exts' 'Перепроверяю критичные расширения по магазину...'
+        }
     }
 })
 $timer.Start()
@@ -1473,8 +1710,13 @@ $tips = @{
     BtnAsk         = 'Передать находку со всеми подробностями в чат с ИИ. Полный текст также попадёт в буфер обмена.'
     BtnCopy        = 'Скопировать подробности выбранной строки в буфер обмена.'
     BtnTrust       = 'Пометить как разобранное: больше не будет попадать в находки. Программа спросит, насколько широко: только этот файл, эта программа любой версии, весь издатель или вся папка.'
-    BtnScanFiles   = 'Открыть окно проверки: туда можно перетащить файл или папку. Программа сама распакует архив, спросит пароль и решит, что имеет смысл проверять.'
-    BtnScanFiles2  = 'Открыть окно проверки: туда можно перетащить файл или папку.'
+    BtnScanFiles   = 'Страница проверки файлов. Файл или папку можно бросить в любое место окна — программа сама распакует архив, спросит пароль и решит, что имеет смысл проверять.'
+    BtnScanFiles2  = 'Перейти к проверке файлов. Файл можно просто бросить в окно.'
+    BtnFixAll      = 'Исправить разом всё, что программа умеет исправлять сама. Покажет список с галочками — снимите те, что оставили намеренно. Каждое исправление обратимо.'
+    BtnFixAll2     = 'Исправить разом всё, что программа умеет исправлять сама. Покажет список с галочками.'
+    BtnExtVerify   = 'Спросить магазин Chrome/Edge, что он знает о критичных расширениях: есть ли оно там и сколько у него пользователей. Наружу уходит только номер расширения.'
+    SbCheck        = 'Спросить VirusTotal о файлах из списка. Наружу уходит только отпечаток SHA-256, сам файл — никогда.'
+    SbDeep         = 'Распаковывать архивы и проверять то, что внутри. Для архива под паролем программа спросит пароль.'
     TglAudit       = 'Аудит доступа к файлам Windows: запись о том, какая программа открыла базу cookie или паролей. Без него главную задачу программы выполнить нечем.'
     TglGuard       = 'Сторож стартует вместе с Windows, работает в фоне и перезапускается, если его завершат. Это не драйвер ядра: противник с правами SYSTEM сможет его снести.'
     Nav            = 'Разделы программы. Нижние три — для разбора: что спрятано, чему вы доверяете, что программа делала.'
@@ -1532,10 +1774,10 @@ $win.Add_StateChanged({
 #  выбираются, поэтому номер строки и номер страницы не
 #  совпадают — нужна карта.
 # ------------------------------------------------------------
-$script:CgNavToPage = @{ 0 = 0; 1 = 1; 3 = 2; 4 = 3; 5 = 4; 6 = 5; 7 = 6; 8 = 7; 10 = 8; 11 = 9; 12 = 10 }
+$script:CgNavToPage = @{ 0 = 0; 1 = 1; 2 = 2; 4 = 3; 5 = 4; 6 = 5; 7 = 6; 8 = 7; 9 = 8; 11 = 9; 12 = 10; 13 = 11 }
 $script:CgPageByKey = @{
-    'over' = 0; 'guard' = 1; 'mon' = 2; 'find' = 3; 'proc' = 4; 'ext' = 5
-    'auto' = 6; 'run' = 7; 'quar' = 8; 'trust' = 9; 'log' = 10
+    'over' = 0; 'guard' = 1; 'files' = 2; 'mon' = 3; 'find' = 4; 'proc' = 5; 'ext' = 6
+    'auto' = 7; 'run' = 8; 'quar' = 9; 'trust' = 10; 'log' = 11
 }
 
 function Show-CgPage {
@@ -1665,6 +1907,7 @@ $ui.HeroGo.Add_Click({ Show-CgPage 'find' })
 # ------------------------------------------------------------
 $script:CgSearchPages = @(
     @{ Key = 'over';  Name = 'Обзор' },      @{ Key = 'guard'; Name = 'Защита' },
+    @{ Key = 'files'; Name = 'Проверка файлов' },
     @{ Key = 'mon';   Name = 'Монитор' },    @{ Key = 'find';  Name = 'Находки' },
     @{ Key = 'proc';  Name = 'Процессы' },   @{ Key = 'ext';   Name = 'Расширения' },
     @{ Key = 'auto';  Name = 'Автозапуск' }, @{ Key = 'run';   Name = 'Запуски' },
@@ -1683,6 +1926,7 @@ function Get-CgGridFor {
         'quar'  { return $ui.GridQuar }
         'trust' { return $ui.GridTrust }
         'mon'   { return $ui.GridMon }
+        'files' { return $ui.SbGrid }
     }
     return $null
 }
@@ -1966,11 +2210,8 @@ $ui.TglGuard.Add_Click({
 # ------------------------------------------------------------
 #  Окно проверки файлов
 # ------------------------------------------------------------
-$openScanBox = {
-    Set-Status 'Окно проверки файлов открыто'
-    Show-CgScanBox $win $PSScriptRoot
-    Set-Status 'Готов'
-}
+$script:CgScan = Initialize-CgScanPage $win $PSScriptRoot $ui { Show-CgPage 'files' }
+$openScanBox = { Show-CgPage 'files' }
 $ui.BtnScanFiles.Add_Click($openScanBox)
 $ui.BtnScanFiles2.Add_Click($openScanBox)
 
@@ -2005,7 +2246,7 @@ $cgRowMenu = {
     )
 }
 
-foreach ($g in @($ui.GridMon, $ui.GridFind, $ui.GridProc, $ui.GridExt, $ui.GridAuto, $ui.GridRun)) {
+foreach ($g in @($ui.GridMon, $ui.GridFind, $ui.GridProc, $ui.GridExt, $ui.GridAuto, $ui.GridRun, $ui.SbGrid)) {
     Add-CgRowMenu $g $cgRowMenu
 }
 

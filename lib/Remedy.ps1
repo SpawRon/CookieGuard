@@ -196,6 +196,29 @@ function Undo-CgFix {
                     } else { $fail++ }
                 } catch { $fail++ }
             }
+            'cert-eku' {
+                $st = $null
+                try {
+                    $st = Open-CgCertStore $it.Location $it.Store
+                    $c = Find-CgStoreCert $st $it.Thumbprint
+                    $old = $null
+                    if ("$($it.Old)") { $old = [Convert]::FromBase64String("$($it.Old)") }
+                    if ($c -and [Cg.CertProp]::Set($c.Handle, 9, $old)) { $done++ } else { $fail++ }
+                } catch { $fail++ } finally { if ($st) { $st.Close() } }
+            }
+            'cert-removed' {
+                $st = $null
+                try {
+                    $st = Open-CgCertStore $it.Location $it.Store
+                    $c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(,[IO.File]::ReadAllBytes($it.File))
+                    $st.Add($c)
+                    if ("$($it.Old)") {
+                        $back = Find-CgStoreCert $st $it.Thumbprint
+                        if ($back) { $null = [Cg.CertProp]::Set($back.Handle, 9, [Convert]::FromBase64String("$($it.Old)")) }
+                    }
+                    $done++
+                } catch { $fail++ } finally { if ($st) { $st.Close() } }
+            }
             'task-disabled' {
                 try { $null = Enable-ScheduledTask -TaskPath $it.TaskPath -TaskName $it.TaskName -ErrorAction Stop; $done++ } catch { $fail++ }
             }
@@ -470,4 +493,100 @@ Register-CgFixer -Id 'folder-quarantine' `
             [PSCustomObject]@{ Type = 'folder-moved'; From = $src; To = $dst }
         )
         return [PSCustomObject]@{ Ok = $true; Message = 'Папка перенесена в карантин'; Undo = $undo; Done = 1 }
+    }
+
+# ---- 8. Корневой сертификат: сузить назначение ----
+#
+# Сертификат не удаляется: ему оставляется подпись кода, а право
+# заверять сайты снимается. Ровно этого хватает установщикам
+# драйверов, ради которых такие сертификаты обычно и ставят, и
+# ровно этого не хватает, чтобы подделать сайт. Прежнее свойство
+# сохраняется в записи отката байт в байт.
+function Open-CgCertStore {
+    param([string]$Location = 'LocalMachine', [string]$Store = 'Root')
+    $st = New-Object System.Security.Cryptography.X509Certificates.X509Store($Store, $Location)
+    $st.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+    return $st
+}
+
+function Find-CgStoreCert {
+    param($Store, [string]$Thumbprint)
+    foreach ($c in $Store.Certificates) { if ($c.Thumbprint -eq $Thumbprint) { return $c } }
+    return $null
+}
+
+Register-CgFixer -Id 'cert-restrict' `
+    -Title 'Ограничить назначение сертификата' `
+    -Explain 'Сертификат останется в системе, но Windows перестанет принимать его для защищённых сайтов: только подпись программ и драйверов. Читать ваш трафик через него станет нельзя. Вернуть можно откатом.' `
+    -Button 'Ограничить' `
+    -Match {
+        param($f)
+        $f.Target -and "$($f.Target.Kind)" -eq 'cert' -and $f.Target.CanTls
+    } `
+    -Plan {
+        param($f)
+        @(New-CgFixStep -Text 'Назначение сертификата' -Target "$($f.Target.Name) ($($f.Target.Thumbprint))" -From 'любое, включая сайты' -To 'только подпись кода')
+    } `
+    -Apply {
+        param($f)
+        if (-not (Test-CgAdmin)) { return [PSCustomObject]@{ Ok = $false; Message = 'Сертификаты компьютера меняются только с правами администратора'; Done = 0 } }
+        $st = $null
+        try {
+            $st = Open-CgCertStore $f.Target.Location $f.Target.Store
+            $c = Find-CgStoreCert $st $f.Target.Thumbprint
+            if (-not $c) { return [PSCustomObject]@{ Ok = $false; Message = 'Сертификата уже нет'; Done = 0 } }
+            $old = [Cg.CertProp]::Get($c.Handle, 9)
+            $oids = New-Object System.Security.Cryptography.OidCollection
+            $null = $oids.Add((New-Object System.Security.Cryptography.Oid '1.3.6.1.5.5.7.3.3'))
+            $ext = New-Object System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension($oids, $false)
+            if (-not [Cg.CertProp]::Set($c.Handle, 9, $ext.RawData)) {
+                return [PSCustomObject]@{ Ok = $false; Message = 'Windows не дала изменить свойство сертификата'; Done = 0 }
+            }
+            $undo = New-CgUndoRecord 'cert-restrict' "Назначение сертификата $($f.Target.Name)" @(
+                [PSCustomObject]@{ Type = 'cert-eku'; Location = $f.Target.Location; Store = $f.Target.Store
+                                   Thumbprint = $f.Target.Thumbprint; Old = $(if ($old) { [Convert]::ToBase64String($old) } else { '' }) }
+            )
+            return [PSCustomObject]@{ Ok = $true; Message = "Сертификат «$($f.Target.Name)» больше не годится для сайтов"; Undo = $undo; Done = 1 }
+        } catch {
+            return [PSCustomObject]@{ Ok = $false; Message = "Не удалось: $($_.Exception.Message)"; Done = 0 }
+        } finally { if ($st) { $st.Close() } }
+    }
+
+# ---- 9. Корневой сертификат: убрать из доверенных ----
+#
+# Перед удалением сертификат целиком сохраняется файлом .cer в
+# папке undo: откат кладёт его обратно. Закрытого ключа у корня
+# в хранилище обычно нет, и терять тут нечего.
+Register-CgFixer -Id 'cert-remove' `
+    -Title 'Убрать сертификат из доверенных' `
+    -Explain 'Сертификат уйдёт из списка, которому Windows верит без вопросов. Копия сохранится в папке undo, вернуть можно откатом. Программа, которая его ставила, может попросить его снова — тогда вы будете знать, чья это печать.' `
+    -Button 'Убрать' -Risky `
+    -Match {
+        param($f)
+        $f.Target -and "$($f.Target.Kind)" -eq 'cert'
+    } `
+    -Plan {
+        param($f)
+        @(New-CgFixStep -Text 'Убрать из доверенных корневых' -Target "$($f.Target.Subject)" -From 'доверен' -To 'копия в undo')
+    } `
+    -Apply {
+        param($f)
+        if (-not (Test-CgAdmin)) { return [PSCustomObject]@{ Ok = $false; Message = 'Сертификаты компьютера меняются только с правами администратора'; Done = 0 } }
+        $st = $null
+        try {
+            $st = Open-CgCertStore $f.Target.Location $f.Target.Store
+            $c = Find-CgStoreCert $st $f.Target.Thumbprint
+            if (-not $c) { return [PSCustomObject]@{ Ok = $false; Message = 'Сертификата уже нет'; Done = 0 } }
+            $file = Join-Path (Get-CgUndoDir) ("cert-{0}.cer" -f $f.Target.Thumbprint)
+            [IO.File]::WriteAllBytes($file, $c.RawData)
+            $old = [Cg.CertProp]::Get($c.Handle, 9)
+            $st.Remove($c)
+            $undo = New-CgUndoRecord 'cert-remove' "Сертификат $($f.Target.Name)" @(
+                [PSCustomObject]@{ Type = 'cert-removed'; Location = $f.Target.Location; Store = $f.Target.Store
+                                   Thumbprint = $f.Target.Thumbprint; File = $file; Old = $(if ($old) { [Convert]::ToBase64String($old) } else { '' }) }
+            )
+            return [PSCustomObject]@{ Ok = $true; Message = "Сертификат «$($f.Target.Name)» убран, копия: $file"; Undo = $undo; Done = 1 }
+        } catch {
+            return [PSCustomObject]@{ Ok = $false; Message = "Не удалось: $($_.Exception.Message)"; Done = 0 }
+        } finally { if ($st) { $st.Close() } }
     }

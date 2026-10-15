@@ -111,7 +111,10 @@ function ConvertTo-CgTrustEntry {
         if (-not $hash -and -not $path -and -not $folder -and $key) {
             if ($key -match '^[0-9A-Fa-f]{64}$') { $hash = $key } else { $path = $key }
         }
-        if ($path -and -not $name) { $name = Split-Path -Leaf $path }
+        # «всё семейство» нарочно без имени: подставь сюда имя файла —
+        # и правило «всё, что запускает Claude» сузится до одной программы
+        $family = ($scope -eq 'parent' -and $key.EndsWith('|*'))
+        if ($path -and -not $name -and -not $family) { $name = Split-Path -Leaf $path }
     }
 
     return [PSCustomObject]@{
@@ -196,6 +199,43 @@ $script:CgInterpreters = @('powershell.exe', 'pwsh.exe', 'cmd.exe', 'wscript.exe
                            'mshta.exe', 'rundll32.exe', 'regsvr32.exe', 'node.exe', 'python.exe',
                            'conhost.exe', 'bash.exe', 'wsl.exe')
 
+# Кого нельзя считать «хозяином» цепочки процессов. Через проводник,
+# службы и планировщик запускается вообще всё; браузер и офис — ровно
+# те, чьих детей программа и сторожит. «Доверять всему, что запускает
+# explorer.exe» значило бы выключить проверку процессов целиком.
+$script:CgNotOwners = @('explorer.exe', 'svchost.exe', 'services.exe', 'wininit.exe', 'winlogon.exe', 'userinit.exe',
+                        'taskhostw.exe', 'taskeng.exe', 'sihost.exe', 'runtimebroker.exe', 'dllhost.exe', 'wmiprvse.exe',
+                        'chrome.exe', 'msedge.exe', 'brave.exe', 'firefox.exe', 'opera.exe', 'vivaldi.exe', 'browser.exe',
+                        'winword.exe', 'excel.exe', 'powerpnt.exe', 'outlook.exe', 'acrobat.exe', 'acrord32.exe',
+                        'pythonw.exe', 'py.exe', 'git.exe', 'sh.exe', 'mintty.exe', 'windowsterminal.exe', 'wt.exe',
+                        'openconsole.exe', 'code.exe')
+
+# Предки строки: настоящая цепочка, если она собрана, иначе хотя бы
+# родитель. Старые строки (из отчёта, из прежней версии) знают только его.
+function Get-CgAncestorList {
+    param([string]$ParentPath = '', [string]$ParentName = '', $Ancestors = @())
+    $a = @(@($Ancestors) | Where-Object { $_ -and ("$($_.Path)" -or "$($_.Name)") })
+    if ($a.Count) { return $a }
+    if ($ParentPath -or $ParentName) { return @([PSCustomObject]@{ Path = $ParentPath; Name = $ParentName }) }
+    return @()
+}
+
+# Ближайший предок, которого можно назвать хозяином: тот, кто
+# запустил интерпретатор, а не сам интерпретатор и не проводник.
+function Get-CgOwnerAncestor {
+    param($Ancestors)
+    foreach ($a in @($Ancestors)) {
+        $leaf = "$($a.Name)".ToLowerInvariant()
+        if (-not $leaf -and "$($a.Path)") { $leaf = (Split-Path -Leaf "$($a.Path)").ToLowerInvariant() }
+        if (-not $leaf) { continue }
+        if ($script:CgInterpreters -contains $leaf) { continue }
+        if ($script:CgNotOwners -contains $leaf) { return $null }
+        if (-not "$($a.Path)") { return $null }
+        return $a
+    }
+    return $null
+}
+
 function Get-CgTrustRules {
     if ($null -ne $script:CgTrustRules) { return $script:CgTrustRules }
     $r = @(Get-CgTrustList | ForEach-Object { ConvertTo-CgTrustEntry $_ })
@@ -225,7 +265,7 @@ function Get-CgTrustMap {
 #  разница между мгновением и секундами.
 # ------------------------------------------------------------
 function Test-CgTrustedFile {
-    param([string]$Path, [string]$Hash = '', [string]$ParentPath = '', [string]$ParentName = '')
+    param([string]$Path, [string]$Hash = '', [string]$ParentPath = '', [string]$ParentName = '', $Ancestors = @())
 
     $rules = @(Get-CgTrustRules | Where-Object { $_.Type -eq 'file' })
     if (-not $rules.Count) { return $null }
@@ -254,11 +294,16 @@ function Test-CgTrustedFile {
     # 1b) родитель: «этот интерпретатор, но только из этих рук».
     #     Считается до чтения файла — нужна лишь подпись родителя,
     #     и та берётся из кеша подписей.
+    #     Смотрим всю цепочку предков, а не одного родителя: railway.exe
+    #     запускает node.exe, его — cmd.exe, его — Claude, и доверие
+    #     «всё, что запускает Claude» обязано дойти до самого низа.
     $byParent = @($rules | Where-Object { $_.Scope -eq 'parent' })
-    if ($byParent.Count -and $np -and ($ParentPath -or $ParentName)) {
+    $chain = @(Get-CgAncestorList $ParentPath $ParentName $Ancestors)
+    if ($byParent.Count -and $np -and $chain.Count) {
         $childLeaf = (Split-Path -Leaf $np)
-        $pIdent = Get-CgParentIdentity $ParentPath $ParentName
-        if ($pIdent) {
+        foreach ($a in $chain) {
+            $pIdent = Get-CgParentIdentity "$($a.Path)" "$($a.Name)"
+            if (-not $pIdent) { continue }
             foreach ($r in $byParent) {
                 if ($r.Name -and $r.Name.ToLowerInvariant() -ne $childLeaf) { continue }
                 if ("$($r.ParentKind)" -ne $pIdent.Kind) { continue }
@@ -333,7 +378,7 @@ function Get-CgTrustKeyForFile {
 #  для этого файла — решает интерфейс, считает эта функция.
 # ------------------------------------------------------------
 function Get-CgTrustOptions {
-    param([string]$Path, [string]$Hash = '', [string]$ParentPath = '', [string]$ParentName = '')
+    param([string]$Path, [string]$Hash = '', [string]$ParentPath = '', [string]$ParentName = '', $Ancestors = @())
 
     $out  = @()
     $np   = Get-CgNormPath $Path
@@ -366,10 +411,35 @@ function Get-CgTrustOptions {
                 Title = "$leaf, запущенный из $($pIdent.Label)"
                 Hint  = $pHint
                 Safe  = $pSafe
+                ParentPath = $ParentPath; ParentName = $ParentName; AnyChild = $false
             }
         }
     }
     $isInterp = ($leaf -and ($script:CgInterpreters -contains $leaf.ToLowerInvariant()))
+
+    # Всё семейство программы: она сама запускает cmd, node, powershell,
+    # и у каждого свой номер процесса. Доверять им по одному — значит
+    # нажимать «Доверять» после каждого запуска. Держится на подписи
+    # хозяина цепочки, поэтому подделать его не выйдет.
+    $familyOpt = $null
+    $owner = Get-CgOwnerAncestor (Get-CgAncestorList $ParentPath $ParentName $Ancestors)
+    if ($owner) {
+        $oIdent = Get-CgParentIdentity "$($owner.Path)" "$($owner.Name)"
+        if ($oIdent -and -not $oIdent.Weak) {
+            $oLeaf = Split-Path -Leaf "$($owner.Path)"
+            $familyOpt = [PSCustomObject]@{
+                Scope = 'parent'
+                Title = "Всё, что запускает $oLeaf ($($oIdent.Label))"
+                Hint  = 'Любой процесс, который запустит эта программа или её потомки, с любым номером. Для помощников вроде Claude, которые сами запускают cmd, node и PowerShell, это верный выбор.'
+                Safe  = 'ok'
+                ParentPath = "$($owner.Path)"; ParentName = "$($owner.Name)"; AnyChild = $true
+            }
+        }
+    }
+    # Интерпретатору и неподписанному файлу верного «по программе» нет —
+    # тогда семейство и есть правильный ответ по умолчанию.
+    $familyFirst = ($familyOpt -and ($isInterp -or -not $signer))
+    if ($familyFirst) { $out += $familyOpt }
 
     # Для интерпретатора «родитель» — правильный ответ по умолчанию, и
     # потому он идёт первым, раньше издателя: powershell.exe подписан
@@ -396,6 +466,7 @@ function Get-CgTrustOptions {
     }
 
     if ($parentOpt -and -not $isInterp) { $out += $parentOpt }
+    if ($familyOpt -and -not $familyFirst) { $out += $familyOpt }
 
     # Издателя для интерпретатора предлагаем последним и честно
     # называем, чем это плохо.
@@ -448,7 +519,7 @@ function Get-CgTrustOptions {
 # ------------------------------------------------------------
 function Add-CgTrust {
     param(
-        [ValidateSet('file', 'extension', 'finding')] [string]$Type,
+        [ValidateSet('file', 'extension', 'finding', 'cert')] [string]$Type,
         [string]$Key = '',
         [string]$Label = '',
         [string]$Note = '',
@@ -459,7 +530,8 @@ function Add-CgTrust {
         [string]$Folder = '',
         [string]$ParentPath = '',
         [string]$ParentName = '',
-        [string]$Pattern = ''
+        [string]$Pattern = '',
+        [switch]$AnyChild
     )
 
     $ParentKind = ''
@@ -498,11 +570,20 @@ function Add-CgTrust {
             'parent' {
                 $pIdent = Get-CgParentIdentity $ParentPath $ParentName
                 if (-not $pIdent) { return [PSCustomObject]@{ Ok = $false; Message = 'Родителя опознать не удалось — доверять «по родителю» нечему' } }
-                if (-not $leaf) { return [PSCustomObject]@{ Ok = $false; Message = 'Не удалось определить имя программы' } }
+                if (-not $leaf -and -not $AnyChild) { return [PSCustomObject]@{ Ok = $false; Message = 'Не удалось определить имя программы' } }
                 $ParentKind  = $pIdent.Kind
                 $ParentKey   = $pIdent.Key
                 $ParentLabel = $pIdent.Label
-                $Key = "parent:$($pIdent.Kind)|$($pIdent.Key)|$leaf"
+                if ($AnyChild) {
+                    $Key = "parent:$($pIdent.Kind)|$($pIdent.Key)|*"
+                    $pLeaf = $ParentName
+                    if (-not $pLeaf -and $ParentPath) { $pLeaf = Split-Path -Leaf $ParentPath }
+                    if (-not $Label) { $Label = "всё, что запускает $pLeaf" }
+                    $leaf = ''
+                    $np = ''
+                } else {
+                    $Key = "parent:$($pIdent.Kind)|$($pIdent.Key)|$leaf"
+                }
             }
             'pathpattern' {
                 if (-not $Pattern) { $Pattern = Get-CgPathPattern $np }
@@ -572,6 +653,7 @@ function Get-CgTrustScopeText {
     if ($Entry.Type -ne 'file') {
         switch ($Entry.Type) {
             'extension' { return 'Расширение браузера' }
+            'cert'      { return 'Корневой сертификат' }
             'finding'   { return 'Находка' }
             default     { return "$($Entry.Type)" }
         }
@@ -597,6 +679,8 @@ function Get-CgTrustView {
             'program'   { "любой файл $($t.Name), подписанный «$($t.Signer)»" }
             'publisher' { "любая программа, подписанная «$($t.Signer)»" }
             'folder'    { "всё внутри $($t.Folder)" }
+            'parent'    { if ($t.Name) { "$($t.Name), запущенный из $($t.ParentLabel)" } else { "любой процесс, запущенный из $($t.ParentLabel) или его потомков" } }
+            'pathpattern' { "файл по пути $($t.Pattern)" }
             default     { if ($t.Hash) { "файл с отпечатком $($t.Hash.Substring(0, [Math]::Min(16, $t.Hash.Length)))…" } else { $t.Path } }
         }
         if ($t.Type -ne 'file') { $covers = $t.Key }
@@ -625,8 +709,21 @@ function Set-CgTrustOnFindings {
     param($Findings)
     $out = @()
     foreach ($f in @($Findings)) {
+        # уже помеченное не помечаем второй раз: окно применяет доверие
+        # к тем же находкам после каждого «Доверять»
+        if ("$($f.Title)".EndsWith('  — доверено вами')) { $out += $f; continue }
         $t = $null
-        if ($f.Path -or $f.Hash) { $t = Test-CgTrustedFile ([string]$f.Path) ([string]$f.Hash) }
+        if ($f.Path -or $f.Hash) {
+            $pp = ''; $pn = ''; $anc = @()
+            if ($f.PSObject.Properties['ParentPath']) { $pp = [string]$f.ParentPath }
+            if ($f.PSObject.Properties['ParentName']) { $pn = [string]$f.ParentName }
+            if ($f.PSObject.Properties['Ancestors'])  { $anc = @($f.Ancestors) }
+            $t = Test-CgTrustedFile ([string]$f.Path) ([string]$f.Hash) $pp $pn $anc
+        }
+        if (-not $t -and $f.PSObject.Properties['ExtKey'] -and $f.ExtKey) { $t = Test-CgTrusted 'extension' ([string]$f.ExtKey) }
+        if (-not $t -and $f.PSObject.Properties['Target'] -and $f.Target -and "$($f.Target.Kind)" -eq 'cert') {
+            $t = Test-CgTrusted 'cert' ([string]$f.Target.Thumbprint)
+        }
         if (-not $t) { $t = Test-CgTrusted 'finding' ("$($f.Area)|$($f.Title)") }
         if ($t) {
             $f.Severity = 'OK'
