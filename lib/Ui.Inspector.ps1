@@ -212,6 +212,7 @@ function Show-CgInspector {
     $w.FindName('InsClose').Add_Click($close)
     Add-CgWindowDrag $w $w.FindName('InsBar')
     $w.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Escape') { $w.Close() } }.GetNewClosure())
+    Add-CgWindowFadeIn $w
 
     $null = $w.ShowDialog()
 }

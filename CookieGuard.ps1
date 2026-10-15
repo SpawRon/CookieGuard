@@ -62,7 +62,7 @@ foreach ($n in @('ChipAdmin','ChipAudit','ChipMon','BtnScan','BtnMon','Cards','B
                  'Inspector','InspKind','InspTitle','BtnInspClose','BtnDiag',
                  'UpdStats','BtnUpdCheck','BtnUpdInstall','BtnUpdToken',
                  'BtnInspect','FixHead','FixPanel',
-                 'NavCol','BtnNavToggle','NavActions','NavActionsMini',
+                 'NavCol','NavPanel','BtnNavToggle','NavActions','NavActionsMini',
                  'BtnScanMini','BtnScanFilesMini','BtnMonMini','NavHeadWatch','NavHeadAnalyse',
                  'SearchBox','SearchHint','SearchPop','SearchList',
                  'TabFindBad','TabFindCrit','TabFindWarn','TabFindAll')) {
@@ -209,7 +209,7 @@ function Show-Detail {
     $app.Selected = $Item
     if (-not $Item) {
         $ui.DetailBox.Text = ''
-        $ui.Inspector.Visibility = 'Collapsed'
+        Show-CgDetailPanel $false
         return
     }
 
@@ -226,7 +226,7 @@ function Show-Detail {
     $ui.InspKind.Foreground = $m[1]
 
     $ui.DetailBox.Text = "$($Item.Detail)".Trim()
-    $ui.Inspector.Visibility = 'Visible'
+    Show-CgDetailPanel $true
 
     # Кнопка, которая ничего не сделает, хуже отсутствующей:
     # гасим то, для чего у этой строки нет данных.
@@ -1470,7 +1470,10 @@ function Show-CgPage {
 
 $ui.Nav.Add_SelectionChanged({
     $i = $ui.Nav.SelectedIndex
-    if ($script:CgNavToPage.ContainsKey($i)) { $ui.Tabs.SelectedIndex = $script:CgNavToPage[$i] }
+    if ($script:CgNavToPage.ContainsKey($i)) {
+        $ui.Tabs.SelectedIndex = $script:CgNavToPage[$i]
+        Start-CgPageFade
+    }
 })
 $ui.Nav.SelectedIndex = 0
 $ui.Tabs.SelectedIndex = 0
@@ -1483,6 +1486,56 @@ $ui.Tabs.SelectedIndex = 0
 #  194 точки таблице и оставляет значки — так сделано и в
 #  «Параметрах», и в тех программах, у которых разделов много.
 # ------------------------------------------------------------
+# ------------------------------------------------------------
+#  Движение
+#
+#  Анимация здесь не украшение. Мгновенная подмена содержимого не
+#  читается как переход: непонятно, открылась новая страница или
+#  моргнула прежняя. Короткое движение отвечает на это без слов.
+#  Длительности намеренно маленькие: интерфейс, который заставляет
+#  себя ждать, надоедает быстрее, чем успевает понравиться.
+# ------------------------------------------------------------
+$script:CgEase = New-Object System.Windows.Media.Animation.CubicEase
+$script:CgEase.EasingMode = 'EaseOut'
+
+function New-CgAnim {
+    param([double]$To, [int]$Ms)
+    $a = New-Object System.Windows.Media.Animation.DoubleAnimation
+    $a.To = $To
+    $a.Duration = New-Object System.Windows.Duration ([TimeSpan]::FromMilliseconds($Ms))
+    $a.EasingFunction = $script:CgEase
+    return $a
+}
+
+# Страница не подменяется, а проявляется и чуть подаётся вверх.
+function Start-CgPageFade {
+    $ui.Tabs.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null)
+    $ui.Tabs.Opacity = 0
+    $ui.Tabs.BeginAnimation([System.Windows.UIElement]::OpacityProperty, (New-CgAnim 1 180))
+    $tt = $ui.Tabs.RenderTransform
+    if ($tt -is [System.Windows.Media.TranslateTransform]) {
+        $tt.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $null)
+        $tt.Y = 10
+        $tt.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-CgAnim 0 240))
+    }
+}
+
+# Панель разбора выезжает сбоку, а не возникает рывком: иначе
+# таблица скачком теряет треть ширины, и строка, на которую вы
+# только что смотрели, уезжает из-под курсора.
+function Show-CgDetailPanel {
+    param([bool]$On)
+    if (-not $On) { $ui.Inspector.Visibility = 'Collapsed'; return }
+    if ($ui.Inspector.Visibility -eq 'Visible') { return }
+    $ui.Inspector.Visibility = 'Visible'
+    $ui.Inspector.BeginAnimation([System.Windows.FrameworkElement]::WidthProperty, $null)
+    $ui.Inspector.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null)
+    $ui.Inspector.Width = 0
+    $ui.Inspector.Opacity = 0
+    $ui.Inspector.BeginAnimation([System.Windows.FrameworkElement]::WidthProperty, (New-CgAnim 412 230))
+    $ui.Inspector.BeginAnimation([System.Windows.UIElement]::OpacityProperty, (New-CgAnim 1 230))
+}
+
 $script:CgNavLabels = @()
 foreach ($it in $ui.Nav.Items) {
     if (-not ($it -is [System.Windows.Controls.ListBoxItem])) { continue }
@@ -1511,7 +1564,7 @@ function Set-CgNavCollapsed {
 
     $w = 252
     if ($On) { $w = 58 }
-    $ui.NavCol.Width = New-Object System.Windows.GridLength $w
+    $ui.NavPanel.BeginAnimation([System.Windows.FrameworkElement]::WidthProperty, (New-CgAnim $w 230))
 
     if ($On) { $ui.BtnNavToggle.ToolTip = 'Развернуть столбец разделов' }
     else     { $ui.BtnNavToggle.ToolTip = 'Свернуть столбец разделов' }

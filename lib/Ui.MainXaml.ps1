@@ -131,13 +131,15 @@ $script:CgMainXaml = @'
     <!-- ===================== ТЕЛО ОКНА ===================== -->
     <Grid Grid.Row="1">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition x:Name="NavCol" Width="252"/>
+        <!-- Ширина столбца — GridLength, её анимировать нечем.
+             Поэтому столбец подстраивается под панель, а едет панель. -->
+        <ColumnDefinition x:Name="NavCol" Width="Auto"/>
         <ColumnDefinition Width="*"/>
         <ColumnDefinition Width="Auto"/>
       </Grid.ColumnDefinitions>
 
       <!-- ========== столбец разделов ========== -->
-      <Border Grid.Column="0" Background="#0A0C0F" BorderBrush="#20242C" BorderThickness="0,0,1,0">
+      <Border x:Name="NavPanel" Grid.Column="0" Width="252" Background="#0A0C0F" BorderBrush="#20242C" BorderThickness="0,0,1,0">
         <DockPanel>
           <StackPanel DockPanel.Dock="Top" Margin="12,12,12,6">
             <Button x:Name="BtnNavToggle" Content="&#xE700;" Style="{StaticResource IconBtn}"
@@ -234,6 +236,7 @@ $script:CgMainXaml = @'
 
       <!-- ========== страницы ========== -->
       <TabControl x:Name="Tabs" Grid.Column="1" Background="#0F1115" BorderThickness="0">
+        <TabControl.RenderTransform><TranslateTransform/></TabControl.RenderTransform>
         <TabControl.ItemContainerStyle>
           <Style TargetType="TabItem"><Setter Property="Visibility" Value="Collapsed"/></Style>
         </TabControl.ItemContainerStyle>

@@ -130,6 +130,7 @@ function Show-CgDialog {
     }
 
     $w.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Escape') { $w.Close() } }.GetNewClosure())
+    Add-CgWindowFadeIn $w
     if ($script:CgDialogOwner -and $script:CgDialogOwner.IsVisible) { $w.Owner = $script:CgDialogOwner }
     else { $w.WindowStartupLocation = 'CenterScreen' }
     $null = $w.ShowDialog()
@@ -228,6 +229,7 @@ function Show-CgPrompt {
     $w.FindName('PrCancel').Add_Click({ $res.V = $null; $w.Close() }.GetNewClosure())
     $w.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Escape') { $res.V = $null; $w.Close() } }.GetNewClosure())
     $w.Add_ContentRendered({ if ($Password) { $pass.Focus() } else { $inp.Focus(); $inp.SelectAll() } }.GetNewClosure())
+    Add-CgWindowFadeIn $w
 
     if ($script:CgDialogOwner -and $script:CgDialogOwner.IsVisible) { $w.Owner = $script:CgDialogOwner }
     else { $w.WindowStartupLocation = 'CenterScreen' }
@@ -363,6 +365,7 @@ function Show-CgTrustDialog {
     }.GetNewClosure())
     $w.FindName('TrCancel').Add_Click({ $res.V = $null; $w.Close() }.GetNewClosure())
     $w.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Escape') { $res.V = $null; $w.Close() } }.GetNewClosure())
+    Add-CgWindowFadeIn $w
 
     if ($script:CgDialogOwner -and $script:CgDialogOwner.IsVisible) { $w.Owner = $script:CgDialogOwner }
     else { $w.WindowStartupLocation = 'CenterScreen' }

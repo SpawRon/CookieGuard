@@ -171,17 +171,37 @@ $script:CgThemeXaml = @'
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6"
-                    MinHeight="{TemplateBinding MinHeight}">
+            <!-- Подсветка — отдельный слой поверх фона, а не подмена
+                 самого фона. Кисти из темы общие и заморожены: менять
+                 их цвет нельзя, а наложить сверху прозрачный слой и
+                 менять его прозрачность — можно, и это плавно. -->
+            <Grid>
+              <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6"
+                      MinHeight="{TemplateBinding MinHeight}"/>
+              <Border x:Name="hl" CornerRadius="6" Background="#FFFFFF" Opacity="0" IsHitTestVisible="False"/>
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
-            </Border>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="b" Property="Background"  Value="{StaticResource ControlBgHi}"/>
-                <Setter TargetName="b" Property="BorderBrush" Value="#434B59"/>
+                <Setter TargetName="b" Property="BorderBrush" Value="#4A5362"/>
+                <Trigger.EnterActions>
+                  <BeginStoryboard><Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="hl" Storyboard.TargetProperty="Opacity"
+                                     To="0.07" Duration="0:0:0.12"/>
+                  </Storyboard></BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                  <BeginStoryboard><Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="hl" Storyboard.TargetProperty="Opacity"
+                                     To="0" Duration="0:0:0.18"/>
+                  </Storyboard></BeginStoryboard>
+                </Trigger.ExitActions>
               </Trigger>
-              <Trigger Property="IsPressed" Value="True"><Setter TargetName="b" Property="Opacity" Value="0.75"/></Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="hl" Property="Background" Value="#000000"/>
+                <Setter TargetName="hl" Property="Opacity" Value="0.18"/>
+              </Trigger>
               <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.38"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -190,23 +210,47 @@ $script:CgThemeXaml = @'
     </Style>
 
     <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Background"  Value="{StaticResource Accent}"/>
+      <!-- Едва заметный градиент: ровная заливка на тёмном фоне
+           выглядит наклейкой, а не кнопкой. -->
+      <Setter Property="Background">
+        <Setter.Value>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#4FA7FF" Offset="0"/>
+            <GradientStop Color="#2E8DEE" Offset="1"/>
+          </LinearGradientBrush>
+        </Setter.Value>
+      </Setter>
       <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
       <Setter Property="Foreground"  Value="#07121D"/>
       <Setter Property="FontWeight"  Value="SemiBold"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="1" CornerRadius="6" MinHeight="{TemplateBinding MinHeight}">
+            <Grid>
+              <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="1" CornerRadius="6" MinHeight="{TemplateBinding MinHeight}"/>
+              <Border x:Name="hl" CornerRadius="6" Background="#FFFFFF" Opacity="0" IsHitTestVisible="False"/>
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
-            </Border>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="b" Property="Background" Value="{StaticResource AccentHi}"/>
-                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource AccentHi}"/>
+                <Trigger.EnterActions>
+                  <BeginStoryboard><Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="hl" Storyboard.TargetProperty="Opacity"
+                                     To="0.14" Duration="0:0:0.12"/>
+                  </Storyboard></BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                  <BeginStoryboard><Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="hl" Storyboard.TargetProperty="Opacity"
+                                     To="0" Duration="0:0:0.18"/>
+                  </Storyboard></BeginStoryboard>
+                </Trigger.ExitActions>
               </Trigger>
-              <Trigger Property="IsPressed" Value="True"><Setter TargetName="b" Property="Opacity" Value="0.8"/></Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="hl" Property="Background" Value="#000000"/>
+                <Setter TargetName="hl" Property="Opacity" Value="0.2"/>
+              </Trigger>
               <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.38"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -304,17 +348,40 @@ $script:CgThemeXaml = @'
           <ControlTemplate TargetType="ListBoxItem">
             <Grid>
               <Border x:Name="bg" Background="Transparent" CornerRadius="6" Height="36"/>
+              <!-- Полоска не возникает, а вырастает: глаз успевает
+                   заметить, КУДА переехал выбор. -->
               <Border x:Name="bar" Width="3" Height="16" CornerRadius="2" Background="{StaticResource Accent}"
-                      HorizontalAlignment="Left" Margin="0,0,0,0" Opacity="0"/>
+                      HorizontalAlignment="Left" Opacity="0" RenderTransformOrigin="0.5,0.5">
+                <Border.RenderTransform><ScaleTransform ScaleY="0.25"/></Border.RenderTransform>
+              </Border>
               <ContentPresenter VerticalAlignment="Center" Margin="14,0,10,0"/>
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bg" Property="Background" Value="#161A21"/></Trigger>
               <Trigger Property="IsSelected" Value="True">
-                <Setter TargetName="bg"  Property="Background" Value="#1E242E"/>
-                <Setter TargetName="bar" Property="Opacity" Value="1"/>
+                <Setter TargetName="bg" Property="Background" Value="#1E242E"/>
                 <Setter Property="Foreground" Value="{StaticResource Text}"/>
                 <Setter Property="FontWeight" Value="SemiBold"/>
+                <Trigger.EnterActions>
+                  <BeginStoryboard><Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="bar" Storyboard.TargetProperty="Opacity"
+                                     To="1" Duration="0:0:0.14"/>
+                    <DoubleAnimation Storyboard.TargetName="bar"
+                                     Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                     To="1" Duration="0:0:0.22">
+                      <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                  </Storyboard></BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                  <BeginStoryboard><Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="bar" Storyboard.TargetProperty="Opacity"
+                                     To="0" Duration="0:0:0.10"/>
+                    <DoubleAnimation Storyboard.TargetName="bar"
+                                     Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                     To="0.25" Duration="0:0:0.10"/>
+                  </Storyboard></BeginStoryboard>
+                </Trigger.ExitActions>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -331,6 +398,14 @@ $script:CgThemeXaml = @'
       <Setter Property="Padding"         Value="18,15"/>
       <Setter Property="Margin"          Value="0,0,0,10"/>
       <Setter Property="SnapsToDevicePixels" Value="True"/>
+      <Style.Triggers>
+        <!-- Карточка чуть светлеет под курсором: на странице из
+             десятка одинаковых карточек это единственный признак,
+             что указатель вообще на чём-то стоит. -->
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="BorderBrush" Value="#2C3340"/>
+        </Trigger>
+      </Style.Triggers>
     </Style>
     <Style x:Key="CardRow" TargetType="Border" BasedOn="{StaticResource Card}">
       <Setter Property="Padding" Value="18,14"/>
@@ -551,20 +626,45 @@ $script:CgThemeXaml = @'
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="CheckBox">
-            <Border x:Name="track" Width="44" Height="24" CornerRadius="12" Background="{StaticResource ControlBg}"
-                    BorderBrush="{StaticResource StrongLine}" BorderThickness="1" Padding="0">
-              <Ellipse x:Name="knob" Width="13" Height="13" Fill="{StaticResource TextDim}"
-                       HorizontalAlignment="Left" VerticalAlignment="Center" Margin="4,0,0,0"/>
-            </Border>
+            <!-- Переключатель, который перескакивает мгновенно, читается
+                 как сбой отрисовки: непонятно, это он сработал или окно
+                 моргнуло. Поэтому кружок едет, а дорожка под ним
+                 проявляется цветом. -->
+            <Grid Width="44" Height="24">
+              <Border x:Name="track" CornerRadius="12" Background="{StaticResource ControlBg}"
+                      BorderBrush="{StaticResource StrongLine}" BorderThickness="1"/>
+              <Border x:Name="trackOn" CornerRadius="12" Background="{StaticResource Accent}"
+                      BorderBrush="{StaticResource Accent}" BorderThickness="1" Opacity="0"/>
+              <Ellipse x:Name="knob" Width="14" Height="14" Fill="{StaticResource TextDim}"
+                       HorizontalAlignment="Left" VerticalAlignment="Center" Margin="4,0,0,0">
+                <Ellipse.RenderTransform><TranslateTransform X="0"/></Ellipse.RenderTransform>
+              </Ellipse>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="track" Property="Background"  Value="{StaticResource Accent}"/>
-                <Setter TargetName="track" Property="BorderBrush" Value="{StaticResource Accent}"/>
-                <Setter TargetName="knob"  Property="Fill" Value="#07121D"/>
-                <Setter TargetName="knob"  Property="HorizontalAlignment" Value="Right"/>
-                <Setter TargetName="knob"  Property="Margin" Value="0,0,4,0"/>
-                <Setter TargetName="knob"  Property="Width"  Value="15"/>
-                <Setter TargetName="knob"  Property="Height" Value="15"/>
+                <Setter TargetName="knob" Property="Fill" Value="#07121D"/>
+                <Trigger.EnterActions>
+                  <BeginStoryboard><Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="knob"
+                                     Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                     To="20" Duration="0:0:0.20">
+                      <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="trackOn" Storyboard.TargetProperty="Opacity"
+                                     To="1" Duration="0:0:0.16"/>
+                  </Storyboard></BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                  <BeginStoryboard><Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="knob"
+                                     Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                     To="0" Duration="0:0:0.20">
+                      <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="trackOn" Storyboard.TargetProperty="Opacity"
+                                     To="0" Duration="0:0:0.16"/>
+                  </Storyboard></BeginStoryboard>
+                </Trigger.ExitActions>
               </Trigger>
               <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="track" Property="BorderBrush" Value="{StaticResource AccentHi}"/></Trigger>
               <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.38"/></Trigger>
@@ -808,6 +908,23 @@ function Get-CgUiMap {
     $m = @{}
     foreach ($n in $Names) { $m[$n] = $Window.FindName($n) }
     return $m
+}
+
+# Появление окна. Диалог, возникающий мгновенно, читается как
+# сбой отрисовки — особенно поверх тёмного окна. Полутораста
+# миллисекунд достаточно, чтобы глаз понял: это новое окно, а не
+# моргнуло старое. Работает только при AllowsTransparency="True",
+# то есть у диалогов; у главного окна своя рамка и свой путь.
+function Add-CgWindowFadeIn {
+    param($Window, [int]$Ms = 140)
+    if (-not $Window) { return }
+    $Window.Opacity = 0
+    $Window.Add_ContentRendered({
+        $a = New-Object System.Windows.Media.Animation.DoubleAnimation
+        $a.To = 1
+        $a.Duration = New-Object System.Windows.Duration ([TimeSpan]::FromMilliseconds($Ms))
+        $Window.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $a)
+    }.GetNewClosure())
 }
 
 # Перетаскивание окна за собственный заголовок: своя рамка —
