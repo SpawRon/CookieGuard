@@ -24,18 +24,35 @@ $script:CgInspectorXaml = @'
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
   <Window.Resources>
 <!--THEME-->
+    <!-- Выделение в дереве Windows красит системным цветом: синим,
+         а без фокуса — почти белым. На тёмной плите белая плашка
+         под красным текстом читается как сбой. Подменяем системные
+         кисти кистями темы — только внутри строк дерева. -->
     <Style x:Key="TvItem" TargetType="TreeViewItem">
+      <Style.Resources>
+        <StaticResource x:Key="{x:Static SystemColors.HighlightBrushKey}" ResourceKey="ControlBgHi"/>
+        <StaticResource x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" ResourceKey="ControlBgHi"/>
+        <StaticResource x:Key="{x:Static SystemColors.HighlightTextBrushKey}" ResourceKey="Text"/>
+        <StaticResource x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" ResourceKey="Text"/>
+      </Style.Resources>
       <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize"   Value="12.5"/>
       <Setter Property="Padding"    Value="3,4"/>
       <Setter Property="Cursor"     Value="Hand"/>
     </Style>
+    <!-- Строки дерева создаются в коде и вложены друг в друга;
+         ItemContainerStyle до вложенных не доходит, а стиль без
+         ключа — доходит. -->
+    <Style TargetType="TreeViewItem" BasedOn="{StaticResource TvItem}"/>
   </Window.Resources>
 
-  <Border Background="{StaticResource WinBg}" BorderBrush="{StaticResource StrongLine}" BorderThickness="1" CornerRadius="10">
-    <Border.Effect><DropShadowEffect BlurRadius="28" ShadowDepth="6" Opacity="0.6" Color="#000000"/></Border.Effect>
-    <Grid Margin="1">
+  <!-- Плита с прямыми углами, как главное окно. Тень оставлена:
+       окно висит над главным и без неё сливается с ним краем.
+       Отступ — место для тени, иначе окно обрезает её целиком. -->
+  <Border Background="{StaticResource WinBg}" BorderBrush="{StaticResource StrongLine}" BorderThickness="1" Margin="14">
+    <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.5" Color="#000000"/></Border.Effect>
+    <Grid>
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
@@ -44,43 +61,46 @@ $script:CgInspectorXaml = @'
       </Grid.RowDefinitions>
 
       <!-- заголовок -->
-      <Grid x:Name="InsBar" Grid.Row="0" Background="{StaticResource NavBg}" Height="44">
-        <TextBlock Text="Разбор находки" Style="{StaticResource H2}" FontSize="14" VerticalAlignment="Center" Margin="20,0,0,0"/>
-        <Button x:Name="InsClose" Content="&#xE8BB;" Style="{StaticResource CaptionClose}" HorizontalAlignment="Right" VerticalAlignment="Top"/>
-      </Grid>
+      <Border Grid.Row="0" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+        <Grid x:Name="InsBar" Background="Transparent" Height="40">
+          <TextBlock Text="Разбор находки" FontFamily="{StaticResource FontDisplay}" FontWeight="SemiBold" FontSize="13.5"
+                     VerticalAlignment="Center" Margin="16,0,0,0"/>
+          <Button x:Name="InsClose" Content="&#xE8BB;" Style="{StaticResource CaptionClose}" HorizontalAlignment="Right"/>
+        </Grid>
+      </Border>
 
       <!-- что разбираем -->
-      <Border Grid.Row="1" Background="{StaticResource CardBgAlt}" Padding="20,12">
+      <Border Grid.Row="1" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="20,16,20,14">
         <StackPanel>
-          <TextBlock x:Name="InsSubject" Text="" Style="{StaticResource H2}" FontSize="14" TextWrapping="Wrap"/>
-          <TextBlock x:Name="InsCount" Text="" Style="{StaticResource Sub}" Margin="0,4,0,0"/>
+          <TextBlock x:Name="InsSubject" Text="" Style="{StaticResource H2}" TextWrapping="Wrap"/>
+          <TextBlock x:Name="InsCount" Text="" Style="{StaticResource Stat}" Margin="0,6,0,0"/>
         </StackPanel>
       </Border>
 
-      <Grid Grid.Row="2" Margin="14,12,14,0">
+      <!-- Дерево и подробности — одна область, между ними линия.
+           Разделитель шире линии и заходит на соседей: за линию в
+           один пиксель не ухватиться. -->
+      <Grid Grid.Row="2">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*" MinWidth="330"/>
-          <ColumnDefinition Width="6"/>
+          <ColumnDefinition Width="Auto"/>
           <ColumnDefinition Width="430" MinWidth="240"/>
         </Grid.ColumnDefinitions>
 
-        <Border Grid.Column="0" Background="{StaticResource CardBg}" BorderBrush="{StaticResource Line}"
-                BorderThickness="1" CornerRadius="9">
-          <TreeView x:Name="InsTree" Background="Transparent" BorderThickness="0" Margin="6"
-                    ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
-        </Border>
+        <TreeView x:Name="InsTree" Grid.Column="0" Background="Transparent" BorderThickness="0" Padding="10,10,6,10"
+                  ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
 
-        <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" Background="Transparent"/>
+        <Border Grid.Column="1" Width="1" Background="{StaticResource Line}"/>
 
-        <Border Grid.Column="2" Background="{StaticResource CardBg}" BorderBrush="{StaticResource Line}"
-                BorderThickness="1" CornerRadius="9" Padding="2">
-          <TextBox x:Name="InsDetail" Style="{StaticResource Mono}" BorderThickness="0"
-                   VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"
-                   Text="Выберите строку слева — здесь появятся подробности."/>
-        </Border>
+        <TextBox x:Name="InsDetail" Grid.Column="2" Style="{StaticResource Mono}" BorderThickness="0"
+                 VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"
+                 Text="Выберите строку слева — здесь появятся подробности."/>
+
+        <GridSplitter Grid.Column="1" Width="7" Margin="-3,0" HorizontalAlignment="Stretch" Background="Transparent"
+                      Panel.ZIndex="1"/>
       </Grid>
 
-      <Border Grid.Row="3" Padding="14,12">
+      <Border Grid.Row="3" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="20,12">
         <Grid>
           <TextBlock x:Name="InsHint" Style="{StaticResource Sub}" VerticalAlignment="Center"
                      Text="Разбор ничего не меняет: он только читает реестр, файлы и список процессов."/>
@@ -104,7 +124,7 @@ function Get-CgNodeBrush {
         'WARN' { return '#FFB340' }
         'OK'   { return '#4ADE80' }
         'NOTE' { return '#7CC4FF' }
-        default { return '#AAB3C0' }
+        default { return '#A3ACB9' }
     }
 }
 
@@ -117,10 +137,10 @@ function New-CgTreeItem {
     $sp = New-Object System.Windows.Controls.StackPanel
     $sp.Orientation = 'Horizontal'
 
-    # точка важности вместо цветного текста: цвет строки легко
-    # списать на тему, а точка читается как пометка
-    $dot = New-Object System.Windows.Shapes.Ellipse
-    $dot.Width = 7; $dot.Height = 7
+    # квадрат важности, как в таблицах главного окна: цвет строки
+    # легко списать на тему, а пометка читается как пометка
+    $dot = New-Object System.Windows.Shapes.Rectangle
+    $dot.Width = 6; $dot.Height = 6
     $dot.Margin = '0,0,9,0'
     $dot.VerticalAlignment = 'Center'
     $dot.Fill = (New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString((Get-CgNodeBrush $Node.Severity))))

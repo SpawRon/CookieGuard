@@ -28,8 +28,11 @@ $script:CgDialogXaml = @'
   <Window.Resources>
 <!--THEME-->
   </Window.Resources>
-  <Border Background="#171A21" BorderBrush="#333A46" BorderThickness="1" CornerRadius="10" Margin="14">
-    <Border.Effect><DropShadowEffect BlurRadius="28" ShadowDepth="6" Opacity="0.6" Color="#000000"/></Border.Effect>
+  <!-- Диалог — та же плита, что и главное окно: прямые углы, рамка
+       линией. Тень оставлена только здесь и у окна разбора: диалог
+       висит над окном, и без тени его край сливается с фоном под ним. -->
+  <Border Background="{StaticResource WinBg}" BorderBrush="{StaticResource StrongLine}" BorderThickness="1" Margin="14">
+    <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.5" Color="#000000"/></Border.Effect>
     <Grid>
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
@@ -43,9 +46,9 @@ $script:CgDialogXaml = @'
           <ColumnDefinition Width="Auto"/>
           <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
-        <Border x:Name="IconBg" Grid.Column="0" Width="38" Height="38" CornerRadius="19" Background="#1E3A5C"
+        <Border x:Name="IconBg" Grid.Column="0" Width="38" Height="38" BorderBrush="{StaticResource StrongLine}" BorderThickness="1"
                 VerticalAlignment="Top" Margin="0,2,16,0">
-          <TextBlock x:Name="IconGlyph" Text="&#xE946;" Style="{StaticResource Glyph}" FontSize="17" Foreground="#3B9EFF"/>
+          <TextBlock x:Name="IconGlyph" Text="&#xE946;" Style="{StaticResource Glyph}" FontSize="17" Foreground="{StaticResource Accent}"/>
         </Border>
         <StackPanel Grid.Column="1">
           <TextBlock x:Name="DlgTitle" Style="{StaticResource H2}" TextWrapping="Wrap"/>
@@ -54,14 +57,15 @@ $script:CgDialogXaml = @'
       </Grid>
 
       <!-- то, о чём речь: путь, имя файла -->
-      <Border x:Name="DlgSubjectBox" Grid.Row="1" Background="#0F1216" BorderBrush="#262B34" BorderThickness="1"
-              CornerRadius="6" Margin="24,16,24,0" Padding="12,9" Visibility="Collapsed">
-        <TextBlock x:Name="DlgSubject" FontFamily="Cascadia Mono, Consolas" FontSize="11.5" Foreground="#AEB8C6"
+      <Border x:Name="DlgSubjectBox" Grid.Row="1" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="1"
+              Margin="24,16,24,0" Padding="12,9" Visibility="Collapsed">
+        <TextBlock x:Name="DlgSubject" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource TextDim}"
                    TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="60"/>
       </Border>
 
-      <!-- кнопки -->
-      <Border Grid.Row="2" Background="#13161C" CornerRadius="0,0,9,9" Margin="1,22,1,1" Padding="20,16">
+      <!-- кнопки: полоса темнее тела, как строка состояния главного окна -->
+      <Border Grid.Row="2" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
+              Margin="0,22,0,0" Padding="24,16">
         <StackPanel x:Name="DlgButtons" Orientation="Horizontal" HorizontalAlignment="Right"/>
       </Border>
     </Grid>
@@ -69,12 +73,15 @@ $script:CgDialogXaml = @'
 </Window>
 '@
 
+# Цвет несёт только сам значок. Квадрат обведён той же линией,
+# что значки настроек в главном окне: цветная заливка под ним
+# спорила бы за внимание с красной кнопкой «Обезвредить».
 $script:CgDialogKinds = @{
-    'info'     = @('&#xE946;', '#3B9EFF', '#1E3A5C')
-    'question' = @('&#xE9CE;', '#3B9EFF', '#1E3A5C')
-    'ok'       = @('&#xE930;', '#4ADE80', '#16301F')
-    'warn'     = @('&#xE7BA;', '#FFB340', '#3A2E18')
-    'danger'   = @('&#xE730;', '#FF5E5E', '#3A1E22')
+    'info'     = @('&#xE946;', '#3B9EFF')
+    'question' = @('&#xE9CE;', '#3B9EFF')
+    'ok'       = @('&#xE930;', '#4ADE80')
+    'warn'     = @('&#xE7BA;', '#FFB340')
+    'danger'   = @('&#xE730;', '#FF5E5E')
 }
 
 # ------------------------------------------------------------
@@ -97,7 +104,6 @@ function Show-CgDialog {
     $w = New-CgWindow $xaml
 
     $w.FindName('IconGlyph').Foreground = $k[1]
-    $w.FindName('IconBg').Background    = $k[2]
     $w.FindName('DlgTitle').Text = $Title
     $tb = $w.FindName('DlgText')
     if ($Text) { $tb.Text = $Text } else { $tb.Visibility = 'Collapsed' }
@@ -163,8 +169,8 @@ $script:CgPromptXaml = @'
   <Window.Resources>
 <!--THEME-->
   </Window.Resources>
-  <Border Background="#171A21" BorderBrush="#333A46" BorderThickness="1" CornerRadius="10" Margin="14">
-    <Border.Effect><DropShadowEffect BlurRadius="28" ShadowDepth="6" Opacity="0.6" Color="#000000"/></Border.Effect>
+  <Border Background="{StaticResource WinBg}" BorderBrush="{StaticResource StrongLine}" BorderThickness="1" Margin="14">
+    <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.5" Color="#000000"/></Border.Effect>
     <Grid>
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
@@ -173,13 +179,14 @@ $script:CgPromptXaml = @'
       <StackPanel Grid.Row="0" Margin="24,22,24,0">
         <TextBlock x:Name="PrTitle" Style="{StaticResource H2}" TextWrapping="Wrap"/>
         <TextBlock x:Name="PrText"  Style="{StaticResource Sub}" FontSize="13" Margin="0,7,0,0" LineHeight="19"/>
-        <TextBlock x:Name="PrSubject" FontFamily="Cascadia Mono, Consolas" FontSize="11.5" Foreground="#8A94A2"
+        <TextBlock x:Name="PrSubject" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource Muted}"
                    Margin="0,10,0,0" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
         <TextBox     x:Name="PrInput" Margin="0,16,0,0" Height="38"/>
         <PasswordBox x:Name="PrPass"  Margin="0,16,0,0" Height="38" Visibility="Collapsed"/>
         <TextBlock x:Name="PrHint" Style="{StaticResource Sub}" FontSize="11.5" Margin="0,9,0,0" Visibility="Collapsed"/>
       </StackPanel>
-      <Border Grid.Row="1" Background="#13161C" CornerRadius="0,0,9,9" Margin="1,22,1,1" Padding="20,16">
+      <Border Grid.Row="1" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
+              Margin="0,22,0,0" Padding="24,16">
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
           <Button x:Name="PrOk" Content="Сохранить" Style="{StaticResource Primary}" MinWidth="104" IsDefault="True"/>
           <Button x:Name="PrCancel" Content="Отмена" MinWidth="104" Margin="8,0,0,0" IsCancel="True"/>
@@ -253,33 +260,41 @@ $script:CgTrustXaml = @'
         WindowStartupLocation="CenterOwner" Title="CookieGuard">
   <Window.Resources>
 <!--THEME-->
+    <!-- Области — строки одной таблицы: стоят вплотную и делят
+         линию (отступ -1). Выбранная светлее и с полосой слева —
+         тот же знак «вот это выбрано», что в столбце разделов. -->
     <Style x:Key="ScopeCard" TargetType="RadioButton">
       <Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="Margin" Value="0,0,0,8"/>
+      <Setter Property="Margin" Value="0,0,0,-1"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="RadioButton">
-            <Border x:Name="b" Background="#1B1F26" BorderBrush="#262B34" BorderThickness="1" CornerRadius="8" Padding="14,12">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="Auto"/>
-                  <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Border x:Name="dot" Grid.Column="0" Width="18" Height="18" CornerRadius="9" BorderBrush="#4A5260"
-                        BorderThickness="1" Background="Transparent" VerticalAlignment="Top" Margin="0,2,13,0">
-                  <Ellipse x:Name="fill" Width="8" Height="8" Fill="#07121D" Opacity="0"/>
-                </Border>
-                <ContentPresenter Grid.Column="1"/>
-              </Grid>
-            </Border>
+            <Grid>
+              <Border x:Name="b" Background="Transparent" BorderBrush="{StaticResource Line}" BorderThickness="1" Padding="16,12">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+                  <Border x:Name="dot" Grid.Column="0" Width="16" Height="16" CornerRadius="2" BorderBrush="{StaticResource StrongLine}"
+                          BorderThickness="1" Background="{StaticResource ControlBg}" VerticalAlignment="Top" Margin="0,2,13,0">
+                    <Rectangle x:Name="fill" Width="6" Height="6" Fill="{StaticResource Accent}" Opacity="0"/>
+                  </Border>
+                  <ContentPresenter Grid.Column="1"/>
+                </Grid>
+              </Border>
+              <Border x:Name="bar" Width="2" Background="{StaticResource Accent}" HorizontalAlignment="Left" Opacity="0"/>
+            </Grid>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="#4A5260"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="b"   Property="Background"  Value="{StaticResource HoverBg}"/>
+                <Setter TargetName="dot" Property="BorderBrush" Value="{StaticResource HoverLine}"/>
+              </Trigger>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="b"    Property="BorderBrush" Value="#3B9EFF"/>
-                <Setter TargetName="b"    Property="Background"  Value="#17202C"/>
-                <Setter TargetName="dot"  Property="Background"  Value="#3B9EFF"/>
-                <Setter TargetName="dot"  Property="BorderBrush" Value="#3B9EFF"/>
+                <Setter TargetName="b"    Property="Background"  Value="{StaticResource ControlBg}"/>
+                <Setter TargetName="dot"  Property="BorderBrush" Value="{StaticResource Accent}"/>
                 <Setter TargetName="fill" Property="Opacity"     Value="1"/>
+                <Setter TargetName="bar"  Property="Opacity"     Value="1"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -287,8 +302,8 @@ $script:CgTrustXaml = @'
       </Setter>
     </Style>
   </Window.Resources>
-  <Border Background="#171A21" BorderBrush="#333A46" BorderThickness="1" CornerRadius="10" Margin="14">
-    <Border.Effect><DropShadowEffect BlurRadius="28" ShadowDepth="6" Opacity="0.6" Color="#000000"/></Border.Effect>
+  <Border Background="{StaticResource WinBg}" BorderBrush="{StaticResource StrongLine}" BorderThickness="1" Margin="14">
+    <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.5" Color="#000000"/></Border.Effect>
     <Grid>
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
@@ -296,16 +311,15 @@ $script:CgTrustXaml = @'
       </Grid.RowDefinitions>
       <StackPanel Grid.Row="0" Margin="24,22,24,0">
         <TextBlock Text="Больше про это не спрашивать" Style="{StaticResource H2}"/>
-        <TextBlock x:Name="TrSubject" FontFamily="Cascadia Mono, Consolas" FontSize="11.5" Foreground="#8A94A2"
+        <TextBlock x:Name="TrSubject" FontFamily="{StaticResource FontMono}" FontSize="11.5" Foreground="{StaticResource Muted}"
                    Margin="0,8,0,0" TextTrimming="CharacterEllipsis"/>
-        <TextBlock Text="НА ЧТО РАСПРОСТРАНЯЕТСЯ" Style="{StaticResource Sub}" FontSize="10.5" FontWeight="SemiBold"
-                   Margin="0,18,0,9" Opacity="0.75"/>
+        <TextBlock Text="НА ЧТО РАСПРОСТРАНЯЕТСЯ" Style="{StaticResource GroupLabel}" Margin="0,20,0,10"/>
         <StackPanel x:Name="TrScopes"/>
-        <TextBlock Text="ПОЧЕМУ ОСТАВЛЯЕТЕ — ЗАМЕТКА СЕБЕ" Style="{StaticResource Sub}" FontSize="10.5" FontWeight="SemiBold"
-                   Margin="0,10,0,9" Opacity="0.75"/>
+        <TextBlock Text="ПОЧЕМУ ОСТАВЛЯЕТЕ — ЗАМЕТКА СЕБЕ" Style="{StaticResource GroupLabel}" Margin="0,22,0,10"/>
         <TextBox x:Name="TrNote" Height="38"/>
       </StackPanel>
-      <Border Grid.Row="1" Background="#13161C" CornerRadius="0,0,9,9" Margin="1,22,1,1" Padding="20,16">
+      <Border Grid.Row="1" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
+              Margin="0,22,0,0" Padding="24,16">
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
           <Button x:Name="TrOk" Content="Доверять" Style="{StaticResource Primary}" MinWidth="104" IsDefault="True"/>
           <Button x:Name="TrCancel" Content="Отмена" MinWidth="104" Margin="8,0,0,0" IsCancel="True"/>

@@ -350,7 +350,7 @@ $script:CgScanBoxXaml = @'
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Проверка файлов — CookieGuard" Height="680" Width="1000" MinHeight="540" MinWidth="780"
-        WindowStyle="None" Background="#101217" WindowStartupLocation="CenterOwner" AllowDrop="True">
+        WindowStyle="None" Background="#0C0D10" WindowStartupLocation="CenterOwner" AllowDrop="True">
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
   </shell:WindowChrome.WindowChrome>
@@ -358,20 +358,21 @@ $script:CgScanBoxXaml = @'
 <!--THEME-->
   </Window.Resources>
 
-  <Border BorderBrush="#2A303A" BorderThickness="1">
+  <Border BorderBrush="{StaticResource Line}" BorderThickness="1">
     <Grid>
       <Grid.RowDefinitions>
-        <RowDefinition Height="42"/>
+        <RowDefinition Height="40"/>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="*"/>
         <RowDefinition Height="Auto"/>
       </Grid.RowDefinitions>
 
-      <Border Grid.Row="0" Background="#15181E" BorderBrush="#232832" BorderThickness="0,0,0,1">
+      <Border Grid.Row="0" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
         <Grid x:Name="SbTitleBar" Background="Transparent">
-          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-            <TextBlock Text="&#xE721;" Style="{StaticResource Glyph}" FontSize="14" Foreground="#3B9EFF"/>
-            <TextBlock Text="Проверка файлов" FontWeight="SemiBold" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center"/>
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+            <TextBlock Text="&#xE721;" Style="{StaticResource Glyph}" FontSize="14" Foreground="{StaticResource Accent}"/>
+            <TextBlock Text="Проверка файлов" FontFamily="{StaticResource FontDisplay}" FontWeight="SemiBold" FontSize="13.5"
+                       Margin="10,0,0,0" VerticalAlignment="Center"/>
           </StackPanel>
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="SbMin"   Content="&#xE921;" Style="{StaticResource CaptionBtn}"/>
@@ -381,23 +382,27 @@ $script:CgScanBoxXaml = @'
         </Grid>
       </Border>
 
-      <Grid Grid.Row="1" Margin="20,16,20,12">
-        <StackPanel Orientation="Horizontal">
-          <Button x:Name="SbAddFiles"  Content="Выбрать файлы" Style="{StaticResource Primary}"/>
-          <Button x:Name="SbAddFolder" Content="Выбрать папку"/>
-          <Button x:Name="SbClear"     Content="Очистить" Style="{StaticResource Ghost}"/>
-        </StackPanel>
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-          <CheckBox x:Name="SbDeep" Content="заглядывать в архивы" IsChecked="True"/>
-          <Button x:Name="SbCheck" Content="Проверить на VirusTotal" Style="{StaticResource Primary}" Margin="6,0,0,0"/>
-        </StackPanel>
-      </Grid>
+      <!-- Панель кнопок стоит вплотную к списку и делит с ним линию,
+           как панели над таблицами главного окна: вместе — один блок. -->
+      <Border Grid.Row="1" Style="{StaticResource Card}" Background="{StaticResource NavBg}" Padding="12,8" Margin="20,20,20,-1">
+        <Grid>
+          <StackPanel Orientation="Horizontal">
+            <Button x:Name="SbAddFiles"  Content="Выбрать файлы" Style="{StaticResource Primary}"/>
+            <Button x:Name="SbAddFolder" Content="Выбрать папку"/>
+            <Button x:Name="SbClear"     Content="Очистить" Style="{StaticResource Ghost}"/>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <CheckBox x:Name="SbDeep" Content="заглядывать в архивы" IsChecked="True"/>
+            <Button x:Name="SbCheck" Content="Проверить на VirusTotal" Style="{StaticResource Primary}" Margin="6,0,0,0"/>
+          </StackPanel>
+        </Grid>
+      </Border>
 
       <Grid Grid.Row="2" Margin="20,0,20,0">
-        <Border x:Name="SbDropHint" BorderBrush="#39404D" BorderThickness="2" CornerRadius="12" Background="#14171C">
+        <Border x:Name="SbDropHint" BorderBrush="{StaticResource Line}" BorderThickness="1" Background="{StaticResource WinBg}">
           <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-            <Border Width="80" Height="80" CornerRadius="40" Background="#1A2634" HorizontalAlignment="Center">
-              <TextBlock Text="&#xE8B5;" Style="{StaticResource Glyph}" FontSize="34" Foreground="#3B9EFF"/>
+            <Border Width="72" Height="72" BorderBrush="{StaticResource StrongLine}" BorderThickness="1" HorizontalAlignment="Center">
+              <TextBlock Text="&#xE8B5;" Style="{StaticResource Glyph}" FontSize="30" Foreground="{StaticResource Accent}"/>
             </Border>
             <TextBlock Text="Перетащите сюда файл или папку" Style="{StaticResource H2}" HorizontalAlignment="Center" Margin="0,22,0,0"/>
             <TextBlock Text="Программа сама решит, что стоит проверять, распакует архив и спросит пароль, если он нужен."
@@ -407,9 +412,23 @@ $script:CgScanBoxXaml = @'
           </StackPanel>
         </Border>
 
-        <Border x:Name="SbListBox" Style="{StaticResource Card}" Padding="4" Margin="0" Visibility="Collapsed">
+        <Border x:Name="SbListBox" Style="{StaticResource Card}" Padding="0" Margin="0" Visibility="Collapsed">
           <DataGrid x:Name="SbGrid">
             <DataGrid.Columns>
+              <!-- Тема больше не красит строку целиком: важность
+                   показывает пометка в своём столбце, как в таблицах
+                   главного окна. Без столбца вердикт VirusTotal был бы
+                   виден только словами. -->
+              <DataGridTemplateColumn Header="УРОВЕНЬ" Width="96">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                      <Rectangle Style="{StaticResource SevMark}"/>
+                      <TextBlock Text="{Binding Severity}" Style="{StaticResource PillTextAuto}"/>
+                    </StackPanel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
               <DataGridTextColumn Header="ФАЙЛ"    Binding="{Binding Display}"  Width="2*" MinWidth="180"/>
               <DataGridTextColumn Header="РАЗМЕР"  Binding="{Binding SizeText}" Width="85"/>
               <DataGridTextColumn Header="ЧТО ЭТО" Binding="{Binding KindText}" Width="135"/>
@@ -420,10 +439,10 @@ $script:CgScanBoxXaml = @'
         </Border>
       </Grid>
 
-      <Border Grid.Row="3" Background="#15181E" BorderBrush="#232832" BorderThickness="0,1,0,0" Padding="20,10" Margin="0,16,0,0">
+      <Border Grid.Row="3" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="16,6" Margin="0,20,0,0">
         <Grid>
-          <TextBlock x:Name="SbStatus" Text="Пусто" Style="{StaticResource Sub}" VerticalAlignment="Center"/>
-          <ProgressBar x:Name="SbProgress" Width="200" Height="4" HorizontalAlignment="Right" Visibility="Collapsed" IsIndeterminate="True"/>
+          <TextBlock x:Name="SbStatus" Text="Пусто" Style="{StaticResource Stat}" TextTrimming="CharacterEllipsis" Margin="0,0,210,0"/>
+          <ProgressBar x:Name="SbProgress" Width="190" Height="2" HorizontalAlignment="Right" Visibility="Collapsed" IsIndeterminate="True"/>
         </Grid>
       </Border>
     </Grid>
@@ -455,12 +474,20 @@ function Show-CgScanBox {
     $u.SbClose.Add_Click({ $w.Close() }.GetNewClosure())
 
     # ---------- перетаскивание ----------
+    # Кисти берём из темы, а не пишем цвет строкой: иначе после
+    # перетаскивания зона возвращалась бы не к тому тону, с которого
+    # начинала, — стоит теме сменить хоть один оттенок.
+    $dz = @{
+        Line = $w.FindResource('Line');   Bg   = $w.FindResource('WinBg')
+        On   = $w.FindResource('Accent'); OnBg = $w.FindResource('ControlBg')
+    }
+
     $w.Add_DragOver({
         param($s, $e)
         if ($e.Data.GetDataPresent([Windows.DataFormats]::FileDrop)) {
             $e.Effects = [Windows.DragDropEffects]::Copy
-            $u.SbDropHint.BorderBrush = '#3B9EFF'
-            $u.SbDropHint.Background = '#16202C'
+            $u.SbDropHint.BorderBrush = $dz.On
+            $u.SbDropHint.Background = $dz.OnBg
         } else {
             $e.Effects = [Windows.DragDropEffects]::None
         }
@@ -468,14 +495,14 @@ function Show-CgScanBox {
     }.GetNewClosure())
 
     $w.Add_DragLeave({
-        $u.SbDropHint.BorderBrush = '#39404D'
-        $u.SbDropHint.Background = '#14171C'
+        $u.SbDropHint.BorderBrush = $dz.Line
+        $u.SbDropHint.Background = $dz.Bg
     }.GetNewClosure())
 
     $w.Add_Drop({
         param($s, $e)
-        $u.SbDropHint.BorderBrush = '#39404D'
-        $u.SbDropHint.Background = '#14171C'
+        $u.SbDropHint.BorderBrush = $dz.Line
+        $u.SbDropHint.Background = $dz.Bg
         if (-not $e.Data.GetDataPresent([Windows.DataFormats]::FileDrop)) { return }
         $e.Handled = $true
         Add-CgSbPaths $ctx @($e.Data.GetData([Windows.DataFormats]::FileDrop))
@@ -549,7 +576,7 @@ function Show-CgScanBox {
             if ($sync.Error) {
                 Set-CgSbStatus $ctx "проверка прервана: $($sync.Error)"
             } elseif ($bad) {
-                Set-CgSbStatus $ctx "проверка закончена. Тревожных: $bad — это строки красным и жёлтым."
+                Set-CgSbStatus $ctx "проверка закончена. Тревожных: $bad — это строки с пометкой CRIT и WARN."
             } else {
                 Set-CgSbStatus $ctx 'проверка закончена, ничего тревожного не найдено'
             }
