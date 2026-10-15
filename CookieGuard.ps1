@@ -65,7 +65,9 @@ foreach ($n in @('ChipAdmin','ChipAudit','ChipMon','BtnScan','BtnMon','Cards','B
                  'NavCol','NavPanel','BtnNavToggle','NavActions','NavActionsMini',
                  'BtnScanMini','BtnScanFilesMini','BtnMonMini','NavHeadWatch','NavHeadAnalyse',
                  'SearchBox','SearchHint','SearchPop','SearchList',
-                 'TabFindBad','TabFindCrit','TabFindWarn','TabFindAll')) {
+                 'TabFindBad','TabFindCrit','TabFindWarn','TabFindAll',
+                 'HeroHead','HeroSub','HeroGo','HeroCrit','HeroWarn','HeroQuar','HeroTotal',
+                 'HeroBarCrit','HeroBarWarn','HeroBarRest')) {
     $ui[$n] = $win.FindName($n)
 }
 
@@ -132,11 +134,13 @@ function New-Card {
     $t2 = New-Object System.Windows.Controls.TextBlock
     $t2.Text = $Value; $t2.FontSize = 21; $t2.FontWeight = 'SemiBold'; $t2.Margin = '0,6,0,0'
     $t2.TextWrapping = 'Wrap'
+    $t2.FontFamily = $win.FindResource('FontDisplay')
     $t2.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($Color))
     $null = $sp.Children.Add($t1); $null = $sp.Children.Add($t2)
     if ($Sub) {
         $t3 = New-Object System.Windows.Controls.TextBlock
         $t3.Text = $Sub; $t3.FontSize = 11; $t3.Margin = '0,4,0,0'; $t3.TextWrapping = 'Wrap'
+        $t3.FontFamily = $win.FindResource('FontMono')
         $t3.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#7C8694'))
         $null = $sp.Children.Add($t3)
     }
@@ -151,11 +155,11 @@ function Update-Cards {
     if ($auditOn) {
         $null = $ui.Cards.Children.Add((New-Card 'Аудит доступа к файлам' 'включён' '#4ADE80' 'Windows записывает, кто открывает cookie'))
         $ui.ChipAudit.Text = 'аудит: вкл'
-        $ui.ChipAudit.Foreground = 'LightGreen'
+        $ui.ChipAudit.Foreground = '#4ADE80'
     } else {
         $null = $ui.Cards.Children.Add((New-Card 'Аудит доступа к файлам' 'выключен' '#FF5E5E' 'Без него не видно, кто брал cookie'))
         $ui.ChipAudit.Text = 'аудит: выкл'
-        $ui.ChipAudit.Foreground = 'Salmon'
+        $ui.ChipAudit.Foreground = '#FF5E5E'
     }
 
     try {
@@ -189,8 +193,61 @@ function Update-Cards {
         $null = $ui.Cards.Children.Add((New-Card 'Последняя проверка' 'не выполнялась' '#7C8694' 'Нажмите «Проверить систему»'))
     }
 
+    Update-CgHero $bd
+
     if ($app.IsAdmin) { $ui.ChipAdmin.Text = 'администратор' } else { $ui.ChipAdmin.Text = 'без прав администратора' }
     Sync-CgToggles
+}
+
+function Get-CgPlural {
+    param([int]$N, [string]$One, [string]$Few, [string]$Many)
+    $n10 = $N % 10; $n100 = $N % 100
+    if ($n10 -eq 1 -and $n100 -ne 11) { return $One }
+    if ($n10 -ge 2 -and $n10 -le 4 -and ($n100 -lt 12 -or $n100 -gt 14)) { return $Few }
+    return $Many
+}
+
+# Три крупных числа наверху обзора и линейка под ними. Заголовок
+# страницы говорит итог словами: «10 критичных находок ждут
+# разбора» читается быстрее, чем слово «Обзор» над тремя цифрами.
+function Update-CgHero {
+    param($BaselineDate)
+    $star = [System.Windows.GridUnitType]::Star
+    $ui.HeroQuar.Text = "$(@(Get-CgQuarantineList).Count)"
+
+    if (-not $app.LastScan) {
+        $ui.HeroCrit.Text = '—'; $ui.HeroWarn.Text = '—'
+        $ui.HeroHead.Text = 'Обзор'
+        $ui.HeroSub.Text  = 'Проверки ещё не было — нажмите «Проверить систему».'
+        $ui.HeroTotal.Text = 'проверки ещё не было'
+        $ui.HeroBarCrit.Width = [System.Windows.GridLength]::new(0, $star)
+        $ui.HeroBarWarn.Width = [System.Windows.GridLength]::new(0, $star)
+        $ui.HeroBarRest.Width = [System.Windows.GridLength]::new(1, $star)
+        return
+    }
+
+    $c = @($app.Findings | Where-Object { $_.Severity -eq 'CRIT' }).Count
+    $w = @($app.Findings | Where-Object { $_.Severity -eq 'WARN' }).Count
+    $ui.HeroCrit.Text = "$c"
+    $ui.HeroWarn.Text = "$w"
+
+    if ($c) {
+        $ui.HeroHead.Text = '{0} {1} разбора' -f $c, (Get-CgPlural $c 'критичная находка ждёт' 'критичные находки ждут' 'критичных находок ждут')
+    } elseif ($w) {
+        $ui.HeroHead.Text = 'Критичного нет'
+    } else {
+        $ui.HeroHead.Text = 'Всё чисто'
+    }
+    $sub = 'Проверка {0} в {1}.' -f $app.LastScan.ToString('dd.MM.yyyy'), $app.LastScan.ToString('HH:mm')
+    if ($BaselineDate) { $sub += ' Эталон снят {0} в {1}.' -f $BaselineDate.ToString('dd.MM.yyyy'), $BaselineDate.ToString('HH:mm') }
+    $ui.HeroSub.Text = $sub
+
+    $t = $c + $w
+    $ui.HeroTotal.Text = '{0} {1}' -f $t, (Get-CgPlural $t 'находка' 'находки' 'находок')
+    $rest = 0; if (-not $t) { $rest = 1 }
+    $ui.HeroBarCrit.Width = [System.Windows.GridLength]::new($c, $star)
+    $ui.HeroBarWarn.Width = [System.Windows.GridLength]::new($w, $star)
+    $ui.HeroBarRest.Width = [System.Windows.GridLength]::new($rest, $star)
 }
 
 # Разбор выбранной строки живёт в правой полосе и появляется
@@ -805,7 +862,7 @@ function Start-Monitor {
     $ui.BtnMon.Content  = 'Остановить монитор'
     $ui.BtnMon2.Content = 'Остановить монитор'
     $ui.ChipMon.Text = 'монитор: работает'
-    $ui.ChipMon.Foreground = 'LightGreen'
+    $ui.ChipMon.Foreground = '#4ADE80'
     if (-not (Test-CgAuditEnabled)) {
         Set-Status 'Монитор запущен. Аудит выключен — обращения к cookie видны не будут, включите его в разделе «Защита».'
     } else {
@@ -1574,6 +1631,7 @@ $ui.BtnNavToggle.Add_Click({ Set-CgNavCollapsed (-not $script:CgNavCollapsed) })
 $ui.BtnScanMini.Add_Click({ Invoke-CgButton $ui.BtnScan })
 $ui.BtnScanFilesMini.Add_Click({ Invoke-CgButton $ui.BtnScanFiles })
 $ui.BtnMonMini.Add_Click({ Invoke-CgButton $ui.BtnMon })
+$ui.HeroGo.Add_Click({ Show-CgPage 'find' })
 
 # ------------------------------------------------------------
 #  Поиск по окну

@@ -8,12 +8,12 @@
 #  интерфейс читается как собранный на коленке, и доверия к
 #  тому, что он показывает, не прибавляет.
 #
-#  Откуда взят вид. Раскладка — как в «Параметрах» Windows 11:
-#  слева список разделов, справа карточки. Это не подражание
-#  ради подражания: человек уже знает, где искать, и не тратит
-#  внимание на изучение нашего интерфейса вместо чтения находок.
-#  Ни одного стандартного системного окна не используется —
-#  MessageBox и InputBox выглядят здесь чужими.
+#  Вид «Монолит» (2.0). Окно — одна плита, а не россыпь
+#  карточек: области делят волосяные линии в один пиксель,
+#  углы у областей прямые, у кнопок — едва скруглённые. Карточки
+#  с тенями и скруглением просили глаз собирать страницу из
+#  кусков; линии на одном фоне читаются как таблица приборов,
+#  где у каждого показания своё место.
 #
 #  ПОЧЕМУ БЕЗ СТОРОННИХ БИБЛИОТЕК. Готовый набор тем (WPF-UI,
 #  ModernWpf) дал бы похожий вид быстрее, но это чужие .dll
@@ -21,45 +21,59 @@
 #  процесс с правами администратора. Для инструмента, который
 #  сам ищет неподписанные файлы в чужом автозапуске, это
 #  двойные стандарты. Всё ниже — обычный XAML и шрифты, уже
-#  имеющиеся в Windows.
+#  имеющиеся в Windows 10: Bahnschrift, Segoe UI, Consolas.
 #
-#  ТРИ УРОВНЯ ГЛУБИНЫ. Столбец разделов темнее страницы,
-#  страница темнее карточки. Глазу не нужно искать границы:
-#  он видит, что лежит на чём. Прежде всё было почти одного
-#  тона, и окно читалось как одна плоская простыня.
+#  ТРИ ТОНА ЧЁРНОГО. Столбец разделов и рамка окна темнее
+#  страницы, кнопки и выбранная строка — светлее. Глубину дают
+#  тона и линии, а не тени: тень на тёмном фоне почти не видна
+#  и только размывает край.
 # ============================================================
 
 $ErrorActionPreference = 'SilentlyContinue'
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml -ErrorAction SilentlyContinue
 
-# Шрифт заголовков: на Windows 11 есть Segoe UI Variable, на 10 — нет.
+# Шрифт текста: на Windows 11 есть Segoe UI Variable, на 10 — нет.
 # WPF сам возьмёт первый существующий из списка.
+# Bahnschrift — для заголовков и чисел: узкий, техничный, есть
+# в Windows 10 с 2017 года. Моноширинный — для путей, времени и
+# кодов важности: в нём столбцы цифр стоят ровно.
 $script:CgFont     = 'Segoe UI Variable Text, Segoe UI'
-$script:CgFontHead = 'Segoe UI Variable Display, Segoe UI'
+$script:CgFontHead = 'Bahnschrift, Segoe UI'
 
 $script:CgThemeXaml = @'
+    <!-- ============ шрифты ============ -->
+    <FontFamily x:Key="FontBody">Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="FontDisplay">Bahnschrift, Segoe UI</FontFamily>
+    <FontFamily x:Key="FontDisplayLight">Bahnschrift Light, Bahnschrift, Segoe UI Light</FontFamily>
+    <FontFamily x:Key="FontMono">Cascadia Mono, Consolas</FontFamily>
+
     <!-- ============ цвета ============
-         Смысловые цвета (Accent, Crit, Warn, Ok, Text, Muted)
+         Смысловые цвета (Accent, Crit, Warn, Ok, Note, Text, Muted)
          менять нельзя: ровно эти значения прописаны строками в
          CookieGuard.ps1, и разойдись они — одна и та же находка
          была бы красной в таблице и оранжевой в карточке.
-         Переделаны только нейтральные тона и глубина. -->
-    <SolidColorBrush x:Key="WinBg"       Color="#0F1115"/>
-    <SolidColorBrush x:Key="NavBg"       Color="#0A0C0F"/>
-    <SolidColorBrush x:Key="ContentBg"   Color="#0F1115"/>
-    <SolidColorBrush x:Key="CardBg"      Color="#171A21"/>
-    <SolidColorBrush x:Key="CardBgAlt"   Color="#1D212A"/>
-    <SolidColorBrush x:Key="ControlBg"   Color="#212631"/>
-    <SolidColorBrush x:Key="ControlBgHi" Color="#2A303C"/>
-    <SolidColorBrush x:Key="Line"        Color="#20242C"/>
-    <SolidColorBrush x:Key="StrongLine"  Color="#343B47"/>
+         Переделаны только нейтральные тона. CardBg теперь равен
+         фону страницы: карточка — это область, обведённая линией,
+         а не плашка поверх. -->
+    <SolidColorBrush x:Key="WinBg"       Color="#0C0D10"/>
+    <SolidColorBrush x:Key="NavBg"       Color="#07080A"/>
+    <SolidColorBrush x:Key="ContentBg"   Color="#0C0D10"/>
+    <SolidColorBrush x:Key="CardBg"      Color="#0C0D10"/>
+    <SolidColorBrush x:Key="CardBgAlt"   Color="#121418"/>
+    <SolidColorBrush x:Key="ControlBg"   Color="#121418"/>
+    <SolidColorBrush x:Key="ControlBgHi" Color="#181B20"/>
+    <SolidColorBrush x:Key="HoverBg"     Color="#0F1114"/>
+    <SolidColorBrush x:Key="Line"        Color="#1A1D22"/>
+    <SolidColorBrush x:Key="StrongLine"  Color="#262A31"/>
+    <SolidColorBrush x:Key="HoverLine"   Color="#3A404A"/>
     <SolidColorBrush x:Key="Text"        Color="#ECEFF4"/>
-    <SolidColorBrush x:Key="TextDim"     Color="#AAB3C0"/>
+    <SolidColorBrush x:Key="TextDim"     Color="#A3ACB9"/>
     <SolidColorBrush x:Key="Muted"       Color="#7C8694"/>
     <SolidColorBrush x:Key="Accent"      Color="#3B9EFF"/>
     <SolidColorBrush x:Key="AccentHi"    Color="#5BB0FF"/>
     <SolidColorBrush x:Key="AccentDim"   Color="#16314E"/>
+    <SolidColorBrush x:Key="OnAccent"    Color="#04101C"/>
     <SolidColorBrush x:Key="Crit"        Color="#FF5E5E"/>
     <SolidColorBrush x:Key="CritDim"     Color="#3A1E22"/>
     <SolidColorBrush x:Key="Warn"        Color="#FFB340"/>
@@ -71,38 +85,67 @@ $script:CgThemeXaml = @'
     <!-- ============ базовая типографика ============ -->
     <Style TargetType="TextBlock">
       <Setter Property="Foreground" Value="{StaticResource Text}"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize"   Value="13"/>
       <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
     </Style>
 
     <Style x:Key="H1" TargetType="TextBlock">
       <Setter Property="Foreground" Value="{StaticResource Text}"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI"/>
-      <Setter Property="FontSize"   Value="26"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontDisplay}"/>
+      <Setter Property="FontSize"   Value="30"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
     <Style x:Key="H2" TargetType="TextBlock">
       <Setter Property="Foreground" Value="{StaticResource Text}"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI"/>
-      <Setter Property="FontSize"   Value="15.5"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontDisplay}"/>
+      <Setter Property="FontSize"   Value="17"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
     <Style x:Key="Sub" TargetType="TextBlock">
       <Setter Property="Foreground" Value="{StaticResource Muted}"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize"   Value="12"/>
       <Setter Property="TextWrapping" Value="Wrap"/>
     </Style>
 
-    <!-- Надпись над группой: разрядка делает её меткой раздела,
-         а не ещё одной строкой текста, который хочется прочесть. -->
+    <!-- Номер и имя страницы над заголовком: «04 — НАХОДКИ».
+         Тот же номер стоит в столбце разделов, и глаз связывает
+         одно с другим без подписи. -->
+    <Style x:Key="Kicker" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontDisplay}"/>
+      <Setter Property="FontSize"   Value="11"/>
+      <Setter Property="Margin"     Value="0,0,0,9"/>
+    </Style>
+
+    <!-- Надпись над группой: другой шрифт и заглавные делают её
+         меткой раздела, а не ещё одной строкой, которую хочется
+         прочесть. -->
     <Style x:Key="GroupLabel" TargetType="TextBlock">
-      <Setter Property="Foreground" Value="#6B7482"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
-      <Setter Property="FontSize"   Value="10.5"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Margin"     Value="2,0,0,10"/>
+      <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontDisplay}"/>
+      <Setter Property="FontSize"   Value="11"/>
+      <Setter Property="Margin"     Value="0,0,0,10"/>
+    </Style>
+
+    <!-- Сводка справа от панели инструментов: числа и время
+         моноширинным, чтобы при обновлении строка не прыгала. -->
+    <Style x:Key="Stat" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+      <Setter Property="FontSize"   Value="11.5"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- Крупное число на обзоре. Тонкое начертание: жирная цифра
+         такого размера кричит, тонкая — просто видна издалека. -->
+    <Style x:Key="BigNum" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource Text}"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontDisplayLight}"/>
+      <Setter Property="FontWeight" Value="Light"/>
+      <Setter Property="FontSize"   Value="92"/>
+      <Setter Property="Margin"     Value="-4,2,0,0"/>
     </Style>
 
     <Style x:Key="Glyph" TargetType="TextBlock">
@@ -119,9 +162,9 @@ $script:CgThemeXaml = @'
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Thumb">
-            <Border x:Name="t" Background="#39404C" CornerRadius="3" Margin="3,0"/>
+            <Border x:Name="t" Background="#262A31" CornerRadius="1" Margin="3,0"/>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="t" Property="Background" Value="#596273"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="t" Property="Background" Value="#3A404A"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -161,10 +204,10 @@ $script:CgThemeXaml = @'
       <Setter Property="Foreground"   Value="{StaticResource Text}"/>
       <Setter Property="BorderBrush"  Value="{StaticResource StrongLine}"/>
       <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Padding"      Value="15,0"/>
+      <Setter Property="Padding"      Value="14,0"/>
       <Setter Property="MinHeight"    Value="34"/>
       <Setter Property="Margin"       Value="0,0,8,0"/>
-      <Setter Property="FontFamily"   Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="FontFamily"   Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize"     Value="13"/>
       <Setter Property="Cursor"       Value="Hand"/>
       <Setter Property="SnapsToDevicePixels" Value="True"/>
@@ -177,18 +220,19 @@ $script:CgThemeXaml = @'
                  менять его прозрачность — можно, и это плавно. -->
             <Grid>
               <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                      BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6"
+                      BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3"
                       MinHeight="{TemplateBinding MinHeight}"/>
-              <Border x:Name="hl" CornerRadius="6" Background="#FFFFFF" Opacity="0" IsHitTestVisible="False"/>
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+              <Border x:Name="hl" CornerRadius="3" Background="#FFFFFF" Opacity="0" IsHitTestVisible="False"/>
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"
+                                Margin="{TemplateBinding Padding}"/>
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="b" Property="BorderBrush" Value="#4A5362"/>
+                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource HoverLine}"/>
                 <Trigger.EnterActions>
                   <BeginStoryboard><Storyboard>
                     <DoubleAnimation Storyboard.TargetName="hl" Storyboard.TargetProperty="Opacity"
-                                     To="0.07" Duration="0:0:0.12"/>
+                                     To="0.05" Duration="0:0:0.12"/>
                   </Storyboard></BeginStoryboard>
                 </Trigger.EnterActions>
                 <Trigger.ExitActions>
@@ -210,27 +254,22 @@ $script:CgThemeXaml = @'
     </Style>
 
     <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <!-- Едва заметный градиент: ровная заливка на тёмном фоне
-           выглядит наклейкой, а не кнопкой. -->
-      <Setter Property="Background">
-        <Setter.Value>
-          <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-            <GradientStop Color="#4FA7FF" Offset="0"/>
-            <GradientStop Color="#2E8DEE" Offset="1"/>
-          </LinearGradientBrush>
-        </Setter.Value>
-      </Setter>
+      <!-- Ровная заливка без градиента: на плите всё плоское, и
+           единственная яркая плоскость в окне сама становится
+           главной кнопкой — ей не нужен объём. -->
+      <Setter Property="Background"  Value="{StaticResource Accent}"/>
       <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
-      <Setter Property="Foreground"  Value="#07121D"/>
+      <Setter Property="Foreground"  Value="{StaticResource OnAccent}"/>
       <Setter Property="FontWeight"  Value="SemiBold"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
             <Grid>
               <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                      BorderThickness="1" CornerRadius="6" MinHeight="{TemplateBinding MinHeight}"/>
-              <Border x:Name="hl" CornerRadius="6" Background="#FFFFFF" Opacity="0" IsHitTestVisible="False"/>
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                      BorderThickness="1" CornerRadius="3" MinHeight="{TemplateBinding MinHeight}"/>
+              <Border x:Name="hl" CornerRadius="3" Background="#FFFFFF" Opacity="0" IsHitTestVisible="False"/>
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"
+                                Margin="{TemplateBinding Padding}"/>
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
@@ -259,21 +298,22 @@ $script:CgThemeXaml = @'
     </Style>
 
     <Style x:Key="Danger" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Background"  Value="#3B1A1E"/>
+      <Setter Property="Background"  Value="#2A1215"/>
       <Setter Property="BorderBrush" Value="#6E2C34"/>
       <Setter Property="Foreground"  Value="#FFB4B4"/>
     </Style>
 
     <Style x:Key="Good" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Background"  Value="#13291B"/>
+      <Setter Property="Background"  Value="#0E1A12"/>
       <Setter Property="BorderBrush" Value="#2B5739"/>
       <Setter Property="Foreground"  Value="#9BE8B6"/>
     </Style>
 
-    <!-- кнопка без рамки: панель окна, мелкие действия -->
+    <!-- кнопка без заливки: второстепенные действия. Линия вместо
+         пустоты — иначе на плите не видно, где кончается кнопка. -->
     <Style x:Key="Ghost" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="Background"  Value="Transparent"/>
-      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
       <Setter Property="Foreground"  Value="{StaticResource TextDim}"/>
     </Style>
 
@@ -292,7 +332,7 @@ $script:CgThemeXaml = @'
     <!-- кнопки заголовка окна -->
     <Style x:Key="CaptionBtn" TargetType="Button">
       <Setter Property="Width" Value="46"/>
-      <Setter Property="Height" Value="36"/>
+      <Setter Property="Height" Value="40"/>
       <Setter Property="Margin" Value="0"/>
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
@@ -306,7 +346,7 @@ $script:CgThemeXaml = @'
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="#242A34"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="#121418"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -337,29 +377,32 @@ $script:CgThemeXaml = @'
       <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
       <Setter Property="Padding" Value="0"/>
     </Style>
+    <!-- Строка раздела во всю ширину столбца, без скругления:
+         выбранная строка — это полоса плиты, чуть светлее
+         остальных, а не пилюля, висящая в воздухе. -->
     <Style x:Key="NavItem" TargetType="ListBoxItem">
       <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize" Value="13"/>
-      <Setter Property="Margin" Value="8,1,8,1"/>
+      <Setter Property="Margin" Value="0"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ListBoxItem">
-            <Grid>
-              <Border x:Name="bg" Background="Transparent" CornerRadius="6" Height="36"/>
+            <Grid Height="36">
+              <Border x:Name="bg" Background="Transparent"/>
               <!-- Полоска не возникает, а вырастает: глаз успевает
                    заметить, КУДА переехал выбор. -->
-              <Border x:Name="bar" Width="3" Height="16" CornerRadius="2" Background="{StaticResource Accent}"
+              <Border x:Name="bar" Width="2" Background="{StaticResource Accent}"
                       HorizontalAlignment="Left" Opacity="0" RenderTransformOrigin="0.5,0.5">
                 <Border.RenderTransform><ScaleTransform ScaleY="0.25"/></Border.RenderTransform>
               </Border>
-              <ContentPresenter VerticalAlignment="Center" Margin="14,0,10,0"/>
+              <ContentPresenter VerticalAlignment="Center" Margin="16,0,12,0"/>
             </Grid>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bg" Property="Background" Value="#161A21"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bg" Property="Background" Value="{StaticResource HoverBg}"/></Trigger>
               <Trigger Property="IsSelected" Value="True">
-                <Setter TargetName="bg" Property="Background" Value="#1E242E"/>
+                <Setter TargetName="bg" Property="Background" Value="{StaticResource ControlBg}"/>
                 <Setter Property="Foreground" Value="{StaticResource Text}"/>
                 <Setter Property="FontWeight" Value="SemiBold"/>
                 <Trigger.EnterActions>
@@ -389,41 +432,63 @@ $script:CgThemeXaml = @'
       </Setter>
     </Style>
 
-    <!-- ============ карточка ============ -->
+    <!-- Номер раздела вместо значка. Номер остаётся видимым и в
+         свёрнутом столбце; у выбранного раздела он окрашивается. -->
+    <Style x:Key="NavNum" TargetType="TextBlock">
+      <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+      <Setter Property="FontSize"   Value="10.5"/>
+      <Setter Property="FontWeight" Value="Normal"/>
+      <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+      <Setter Property="Width"      Value="28"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+          <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- ============ области ============
+         Карточка больше не плашка: та же плита, обведённая линией.
+         Соседние области стоят вплотную и делят одну линию на двоих
+         (отступ -1), поэтому список настроек читается как одна
+         таблица, а не как стопка отдельных листков. -->
     <Style x:Key="Card" TargetType="Border">
       <Setter Property="Background"      Value="{StaticResource CardBg}"/>
       <Setter Property="BorderBrush"     Value="{StaticResource Line}"/>
       <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius"    Value="9"/>
+      <Setter Property="CornerRadius"    Value="0"/>
       <Setter Property="Padding"         Value="18,15"/>
       <Setter Property="Margin"          Value="0,0,0,10"/>
       <Setter Property="SnapsToDevicePixels" Value="True"/>
-      <Style.Triggers>
-        <!-- Карточка чуть светлеет под курсором: на странице из
-             десятка одинаковых карточек это единственный признак,
-             что указатель вообще на чём-то стоит. -->
-        <Trigger Property="IsMouseOver" Value="True">
-          <Setter Property="BorderBrush" Value="#2C3340"/>
-        </Trigger>
-      </Style.Triggers>
     </Style>
     <Style x:Key="CardRow" TargetType="Border" BasedOn="{StaticResource Card}">
       <Setter Property="Padding" Value="18,14"/>
+      <Setter Property="Margin"  Value="0,0,0,-1"/>
+      <Style.Triggers>
+        <!-- Строка чуть светлеет под курсором: в длинном списке
+             настроек это единственный признак, что указатель вообще
+             на чём-то стоит. -->
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="{StaticResource HoverBg}"/>
+        </Trigger>
+      </Style.Triggers>
     </Style>
+    <!-- Ячейка приборной панели на обзоре. Ширину задаёт сетка, в
+         которой она лежит; отступ -1 сводит соседние рамки в одну. -->
     <Style x:Key="Tile" TargetType="Border" BasedOn="{StaticResource Card}">
-      <Setter Property="Margin"   Value="0,0,10,10"/>
-      <Setter Property="MinWidth" Value="200"/>
-      <Setter Property="Padding"  Value="18,16"/>
+      <Setter Property="Margin"    Value="0,0,-1,-1"/>
+      <Setter Property="MinHeight" Value="92"/>
+      <Setter Property="Padding"   Value="18,14"/>
     </Style>
 
-    <!-- шапка карточки: как у Zapret — полоска чуть светлее тела -->
     <Style x:Key="CardHead" TargetType="Border">
       <Setter Property="Background"   Value="{StaticResource CardBgAlt}"/>
-      <Setter Property="CornerRadius" Value="9,9,0,0"/>
+      <Setter Property="CornerRadius" Value="0"/>
       <Setter Property="Padding"      Value="18,11"/>
     </Style>
 
-    <!-- тонкая разделительная полоса внутри карточки -->
+    <!-- тонкая разделительная полоса внутри области -->
     <Style x:Key="Divider" TargetType="Border">
       <Setter Property="Height"     Value="1"/>
       <Setter Property="Background" Value="{StaticResource Line}"/>
@@ -431,10 +496,12 @@ $script:CgThemeXaml = @'
     </Style>
 
     <!-- ============ значок важности ============
-         Цветное слово рядом со строкой читается быстрее, чем
-         цвет самой строки: цвет текста легко списать на тему. -->
+         Код важности моноширинным и цветом, рядом — цветной
+         квадрат. Плашка под словом в таблице на сотню строк
+         превращала столбец в пёструю ленту; квадрат и цвет текста
+         говорят то же самое тише. -->
     <Style x:Key="Pill" TargetType="Border">
-      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="CornerRadius" Value="2"/>
       <Setter Property="Padding"      Value="7,2"/>
       <Setter Property="Margin"       Value="0,0,8,0"/>
       <Setter Property="Background"   Value="{StaticResource ControlBg}"/>
@@ -450,7 +517,8 @@ $script:CgThemeXaml = @'
       <Setter Property="Background" Value="{StaticResource OkDim}"/>
     </Style>
     <Style x:Key="PillText" TargetType="TextBlock">
-      <Setter Property="FontSize"   Value="10.5"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+      <Setter Property="FontSize"   Value="11"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
@@ -458,16 +526,12 @@ $script:CgThemeXaml = @'
     <!-- Значок важности, который красится сам по строке таблицы.
          Раньше важность показывал цвет всей строки. Так строка
          читалась хуже (цветной текст на тёмном фоне), а главное —
-         цвет текста легко списать на оформление. Значок рядом со
+         цвет текста легко списать на оформление. Пометка рядом со
          строкой — это пометка, её не спутать с темой. -->
     <Style x:Key="PillAuto" TargetType="Border" BasedOn="{StaticResource Pill}">
       <Setter Property="HorizontalAlignment" Value="Left"/>
-      <Style.Triggers>
-        <DataTrigger Binding="{Binding Severity}" Value="CRIT"><Setter Property="Background" Value="{StaticResource CritDim}"/></DataTrigger>
-        <DataTrigger Binding="{Binding Severity}" Value="WARN"><Setter Property="Background" Value="{StaticResource WarnDim}"/></DataTrigger>
-        <DataTrigger Binding="{Binding Severity}" Value="OK"><Setter Property="Background" Value="{StaticResource OkDim}"/></DataTrigger>
-        <DataTrigger Binding="{Binding Severity}" Value="NOTE"><Setter Property="Background" Value="{StaticResource AccentDim}"/></DataTrigger>
-      </Style.Triggers>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Padding"    Value="0"/>
     </Style>
     <Style x:Key="PillTextAuto" TargetType="TextBlock" BasedOn="{StaticResource PillText}">
       <Setter Property="Foreground" Value="{StaticResource Muted}"/>
@@ -478,27 +542,40 @@ $script:CgThemeXaml = @'
         <DataTrigger Binding="{Binding Severity}" Value="NOTE"><Setter Property="Foreground" Value="{StaticResource Note}"/></DataTrigger>
       </Style.Triggers>
     </Style>
+    <Style x:Key="SevMark" TargetType="Rectangle">
+      <Setter Property="Width"  Value="6"/>
+      <Setter Property="Height" Value="6"/>
+      <Setter Property="Margin" Value="0,0,8,0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Fill"   Value="{StaticResource Muted}"/>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding Severity}" Value="CRIT"><Setter Property="Fill" Value="{StaticResource Crit}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Severity}" Value="WARN"><Setter Property="Fill" Value="{StaticResource Warn}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Severity}" Value="OK"><Setter Property="Fill" Value="{StaticResource Ok}"/></DataTrigger>
+        <DataTrigger Binding="{Binding Severity}" Value="NOTE"><Setter Property="Fill" Value="{StaticResource Note}"/></DataTrigger>
+      </Style.Triggers>
+    </Style>
 
-    <!-- ============ полоса вкладок внутри страницы ============ -->
+    <!-- ============ полоса вкладок внутри страницы ============
+         Без подложки: выбранную вкладку выдаёт линия под ней во
+         всю ширину надписи и белый цвет текста. -->
     <Style x:Key="SegTab" TargetType="RadioButton">
-      <Setter Property="Foreground" Value="{StaticResource Muted}"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize"   Value="13"/>
       <Setter Property="Cursor"     Value="Hand"/>
       <Setter Property="Margin"     Value="0,0,2,0"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="RadioButton">
-            <Grid>
-              <Border x:Name="bg" Background="Transparent" CornerRadius="6" Padding="18,9"/>
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="18,9"/>
-              <Border x:Name="ul" Height="2" CornerRadius="1" Background="{StaticResource Accent}"
-                      VerticalAlignment="Bottom" HorizontalAlignment="Center" Width="26" Opacity="0"/>
+            <Grid Background="Transparent" Height="34">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="10,0"/>
+              <Border x:Name="ul" Height="2" Background="{StaticResource Accent}"
+                      VerticalAlignment="Bottom" Margin="10,0" Opacity="0"/>
             </Grid>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource TextDim}"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource Text}"/></Trigger>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="bg" Property="Background" Value="{StaticResource CardBg}"/>
                 <Setter TargetName="ul" Property="Opacity" Value="1"/>
                 <Setter Property="Foreground" Value="{StaticResource Text}"/>
                 <Setter Property="FontWeight" Value="SemiBold"/>
@@ -515,7 +592,7 @@ $script:CgThemeXaml = @'
       <Setter Property="Foreground"  Value="{StaticResource Text}"/>
       <Setter Property="BorderBrush" Value="{StaticResource StrongLine}"/>
       <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="FontFamily"  Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="FontFamily"  Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize"    Value="13"/>
       <Setter Property="Padding"     Value="11,8"/>
       <Setter Property="CaretBrush"  Value="{StaticResource Text}"/>
@@ -525,12 +602,12 @@ $script:CgThemeXaml = @'
         <Setter.Value>
           <ControlTemplate TargetType="TextBox">
             <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3">
               <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
                             VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="#434B59"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="{StaticResource HoverLine}"/></Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -539,9 +616,9 @@ $script:CgThemeXaml = @'
     </Style>
 
     <Style x:Key="Mono" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
-      <Setter Property="FontFamily" Value="Cascadia Mono, Consolas"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
       <Setter Property="FontSize"   Value="12"/>
-      <Setter Property="Background" Value="#0A0C10"/>
+      <Setter Property="Background" Value="{StaticResource NavBg}"/>
       <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
       <Setter Property="Foreground" Value="#C2CBD6"/>
       <Setter Property="Padding"    Value="13,11"/>
@@ -551,7 +628,7 @@ $script:CgThemeXaml = @'
         <Setter.Value>
           <ControlTemplate TargetType="TextBox">
             <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7">
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="0">
               <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
             </Border>
           </ControlTemplate>
@@ -564,7 +641,7 @@ $script:CgThemeXaml = @'
       <Setter Property="Foreground"  Value="{StaticResource Text}"/>
       <Setter Property="BorderBrush" Value="{StaticResource StrongLine}"/>
       <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="FontFamily"  Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="FontFamily"  Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize"    Value="13"/>
       <Setter Property="Padding"     Value="11,8"/>
       <Setter Property="CaretBrush"  Value="{StaticResource Text}"/>
@@ -573,7 +650,7 @@ $script:CgThemeXaml = @'
         <Setter.Value>
           <ControlTemplate TargetType="PasswordBox">
             <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3">
               <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
                             VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
             </Border>
@@ -587,8 +664,8 @@ $script:CgThemeXaml = @'
 
     <!-- ============ флажок и переключатель ============ -->
     <Style TargetType="CheckBox">
-      <Setter Property="Foreground" Value="{StaticResource Text}"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize"   Value="13"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
       <Setter Property="Margin"     Value="0,0,14,0"/>
@@ -597,10 +674,10 @@ $script:CgThemeXaml = @'
         <Setter.Value>
           <ControlTemplate TargetType="CheckBox">
             <StackPanel Orientation="Horizontal" Background="Transparent">
-              <Border x:Name="box" Width="19" Height="19" CornerRadius="4" VerticalAlignment="Center"
+              <Border x:Name="box" Width="16" Height="16" CornerRadius="2" VerticalAlignment="Center"
                       Background="{StaticResource ControlBg}" BorderBrush="{StaticResource StrongLine}" BorderThickness="1">
-                <TextBlock x:Name="gl" Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="11"
-                           Foreground="#07121D" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0"/>
+                <TextBlock x:Name="gl" Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10"
+                           Foreground="{StaticResource OnAccent}" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0"/>
               </Border>
               <ContentPresenter Margin="9,0,0,0" VerticalAlignment="Center"/>
             </StackPanel>
@@ -610,7 +687,10 @@ $script:CgThemeXaml = @'
                 <Setter TargetName="box" Property="BorderBrush" Value="{StaticResource Accent}"/>
                 <Setter TargetName="gl"  Property="Opacity" Value="1"/>
               </Trigger>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="box" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="box" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                <Setter Property="Foreground" Value="{StaticResource Text}"/>
+              </Trigger>
               <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.38"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -618,7 +698,7 @@ $script:CgThemeXaml = @'
       </Setter>
     </Style>
 
-    <!-- переключатель «включено / выключено» как в Параметрах -->
+    <!-- переключатель «включено / выключено» -->
     <Style x:Key="Toggle" TargetType="CheckBox">
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
@@ -628,21 +708,22 @@ $script:CgThemeXaml = @'
           <ControlTemplate TargetType="CheckBox">
             <!-- Переключатель, который перескакивает мгновенно, читается
                  как сбой отрисовки: непонятно, это он сработал или окно
-                 моргнуло. Поэтому кружок едет, а дорожка под ним
-                 проявляется цветом. -->
+                 моргнуло. Поэтому бегунок едет, а дорожка под ним
+                 проявляется цветом. Бегунок квадратный — в тон прямым
+                 углам всего окна. -->
             <Grid Width="44" Height="24">
-              <Border x:Name="track" CornerRadius="12" Background="{StaticResource ControlBg}"
+              <Border x:Name="track" CornerRadius="2" Background="{StaticResource ControlBg}"
                       BorderBrush="{StaticResource StrongLine}" BorderThickness="1"/>
-              <Border x:Name="trackOn" CornerRadius="12" Background="{StaticResource Accent}"
+              <Border x:Name="trackOn" CornerRadius="2" Background="{StaticResource Accent}"
                       BorderBrush="{StaticResource Accent}" BorderThickness="1" Opacity="0"/>
-              <Ellipse x:Name="knob" Width="14" Height="14" Fill="{StaticResource TextDim}"
-                       HorizontalAlignment="Left" VerticalAlignment="Center" Margin="4,0,0,0">
-                <Ellipse.RenderTransform><TranslateTransform X="0"/></Ellipse.RenderTransform>
-              </Ellipse>
+              <Rectangle x:Name="knob" Width="14" Height="14" Fill="{StaticResource Muted}"
+                         HorizontalAlignment="Left" VerticalAlignment="Center" Margin="5,0,0,0">
+                <Rectangle.RenderTransform><TranslateTransform X="0"/></Rectangle.RenderTransform>
+              </Rectangle>
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="knob" Property="Fill" Value="#07121D"/>
+                <Setter TargetName="knob" Property="Fill" Value="{StaticResource OnAccent}"/>
                 <Trigger.EnterActions>
                   <BeginStoryboard><Storyboard>
                     <DoubleAnimation Storyboard.TargetName="knob"
@@ -680,12 +761,15 @@ $script:CgThemeXaml = @'
         <Setter.Value>
           <ControlTemplate TargetType="ToggleButton">
             <Border x:Name="b" Background="{StaticResource ControlBg}" BorderBrush="{StaticResource StrongLine}"
-                    BorderThickness="1" CornerRadius="6">
+                    BorderThickness="1" CornerRadius="3">
               <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10"
                          Foreground="{StaticResource TextDim}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,11,0"/>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="{StaticResource ControlBgHi}"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="b" Property="Background" Value="{StaticResource ControlBgHi}"/>
+                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource HoverLine}"/>
+              </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -693,7 +777,7 @@ $script:CgThemeXaml = @'
     </Style>
     <Style TargetType="ComboBox">
       <Setter Property="Foreground" Value="{StaticResource Text}"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize"   Value="13"/>
       <Setter Property="Height"     Value="34"/>
       <Setter Property="Cursor"     Value="Hand"/>
@@ -708,9 +792,9 @@ $script:CgThemeXaml = @'
                                 Margin="12,0,32,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
               <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False"
                      IsOpen="{TemplateBinding IsDropDownOpen}" PopupAnimation="Fade">
-                <Border Background="#1D212A" BorderBrush="{StaticResource StrongLine}" BorderThickness="1" CornerRadius="7"
+                <Border Background="{StaticResource ControlBg}" BorderBrush="{StaticResource StrongLine}" BorderThickness="1" CornerRadius="3"
                         MinWidth="{TemplateBinding ActualWidth}" Margin="0,4,0,0" Padding="3">
-                  <Border.Effect><DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.5" Color="#000000"/></Border.Effect>
+                  <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="3" Opacity="0.5" Color="#000000"/></Border.Effect>
                   <ScrollViewer MaxHeight="300"><StackPanel IsItemsHost="True"/></ScrollViewer>
                 </Border>
               </Popup>
@@ -721,18 +805,18 @@ $script:CgThemeXaml = @'
     </Style>
     <Style TargetType="ComboBoxItem">
       <Setter Property="Foreground" Value="{StaticResource Text}"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize"   Value="13"/>
       <Setter Property="Padding"    Value="10,7"/>
       <Setter Property="Cursor"     Value="Hand"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ComboBoxItem">
-            <Border x:Name="b" Background="Transparent" CornerRadius="4" Padding="{TemplateBinding Padding}">
+            <Border x:Name="b" Background="Transparent" CornerRadius="2" Padding="{TemplateBinding Padding}">
               <ContentPresenter/>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="#2A303C"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="{StaticResource ControlBgHi}"/></Trigger>
               <Trigger Property="IsSelected" Value="True"><Setter TargetName="b" Property="Background" Value="{StaticResource AccentDim}"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -740,35 +824,36 @@ $script:CgThemeXaml = @'
       </Setter>
     </Style>
 
-    <!-- ============ таблица ============ -->
+    <!-- ============ таблица ============
+         Строки делят волосяные линии, а не чередование фона:
+         зебра на тёмном фоне рябит, линия — нет. -->
     <Style TargetType="DataGrid">
       <Setter Property="Background"      Value="Transparent"/>
       <Setter Property="Foreground"      Value="{StaticResource Text}"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="RowBackground"            Value="Transparent"/>
-      <Setter Property="AlternatingRowBackground" Value="#13161B"/>
-      <Setter Property="GridLinesVisibility" Value="None"/>
+      <Setter Property="AlternatingRowBackground" Value="Transparent"/>
+      <Setter Property="GridLinesVisibility" Value="Horizontal"/>
       <Setter Property="HeadersVisibility"   Value="Column"/>
       <Setter Property="AutoGenerateColumns" Value="False"/>
       <Setter Property="IsReadOnly"          Value="True"/>
       <Setter Property="SelectionMode"       Value="Single"/>
       <Setter Property="CanUserAddRows"      Value="False"/>
       <Setter Property="EnableRowVirtualization" Value="True"/>
-      <Setter Property="RowHeight"   Value="36"/>
-      <Setter Property="FontFamily"  Value="Segoe UI Variable Text, Segoe UI"/>
-      <Setter Property="FontSize"    Value="12"/>
+      <Setter Property="RowHeight"   Value="38"/>
+      <Setter Property="FontFamily"  Value="{StaticResource FontBody}"/>
+      <Setter Property="FontSize"    Value="12.5"/>
       <Setter Property="VerticalGridLinesBrush"   Value="Transparent"/>
-      <Setter Property="HorizontalGridLinesBrush" Value="Transparent"/>
+      <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource Line}"/>
     </Style>
     <Style TargetType="DataGridColumnHeader">
       <Setter Property="Background"  Value="Transparent"/>
       <Setter Property="Foreground"  Value="{StaticResource Muted}"/>
       <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
       <Setter Property="BorderThickness" Value="0,0,0,1"/>
-      <Setter Property="Padding"     Value="12,10"/>
+      <Setter Property="Padding"     Value="14,10"/>
       <Setter Property="FontSize"    Value="11"/>
-      <Setter Property="FontWeight"  Value="SemiBold"/>
-      <Setter Property="FontFamily"  Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="FontFamily"  Value="{StaticResource FontDisplay}"/>
       <Setter Property="HorizontalContentAlignment" Value="Left"/>
     </Style>
     <Style TargetType="DataGridCell">
@@ -783,20 +868,37 @@ $script:CgThemeXaml = @'
           </ControlTemplate>
         </Setter.Value>
       </Setter>
+      <!-- Системная тема красит текст выбранной ячейки цветом
+           «неактивного выделения», как только таблица теряет фокус, —
+           а фокус уходит в панель разбора при первом же щелчке. -->
+      <Style.Triggers>
+        <Trigger Property="IsSelected" Value="True">
+          <Setter Property="Foreground" Value="{StaticResource Text}"/>
+        </Trigger>
+      </Style.Triggers>
     </Style>
+    <!-- Выбранная строка — светлее и с полосой слева, как раздел
+         в столбце слева: один и тот же знак «вот это выбрано»
+         во всём окне. -->
     <Style TargetType="DataGridRow">
       <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
       <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="BorderThickness" Value="2,0,0,0"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
       <Style.Triggers>
         <!-- Критичную строку всё же выделяем — но яркостью, не цветом:
-             цвет теперь занят значком важности. -->
+             цвет занят значком важности. -->
         <DataTrigger Binding="{Binding Severity}" Value="CRIT">
           <Setter Property="Foreground" Value="{StaticResource Text}"/>
           <Setter Property="FontWeight" Value="SemiBold"/>
         </DataTrigger>
         <DataTrigger Binding="{Binding Severity}" Value="INFO"><Setter Property="Foreground" Value="{StaticResource Muted}"/></DataTrigger>
-        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#191E26"/></Trigger>
-        <Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="{StaticResource AccentDim}"/></Trigger>
+        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{StaticResource HoverBg}"/></Trigger>
+        <Trigger Property="IsSelected" Value="True">
+          <Setter Property="Background" Value="{StaticResource ControlBg}"/>
+          <Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
+          <Setter Property="Foreground" Value="{StaticResource Text}"/>
+        </Trigger>
       </Style.Triggers>
     </Style>
 
@@ -809,9 +911,9 @@ $script:CgThemeXaml = @'
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ContextMenu">
-            <Border Background="#1D212A" BorderBrush="{StaticResource StrongLine}" BorderThickness="1"
-                    CornerRadius="9" Padding="4" Margin="8">
-              <Border.Effect><DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.6" Color="#000000"/></Border.Effect>
+            <Border Background="{StaticResource ControlBg}" BorderBrush="{StaticResource StrongLine}" BorderThickness="1"
+                    CornerRadius="3" Padding="4" Margin="8">
+              <Border.Effect><DropShadowEffect BlurRadius="18" ShadowDepth="4" Opacity="0.55" Color="#000000"/></Border.Effect>
               <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
             </Border>
           </ControlTemplate>
@@ -820,13 +922,13 @@ $script:CgThemeXaml = @'
     </Style>
     <Style TargetType="MenuItem">
       <Setter Property="Foreground" Value="{StaticResource Text}"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize"   Value="13"/>
       <Setter Property="Cursor"     Value="Hand"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="MenuItem">
-            <Border x:Name="b" Background="Transparent" CornerRadius="5" Padding="10,7" MinWidth="210">
+            <Border x:Name="b" Background="Transparent" CornerRadius="2" Padding="10,7" MinWidth="210">
               <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="22"/>
@@ -837,11 +939,11 @@ $script:CgThemeXaml = @'
                            FontSize="13" Foreground="{StaticResource TextDim}" VerticalAlignment="Center"/>
                 <ContentPresenter Grid.Column="1" ContentSource="Header" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}" Foreground="{StaticResource Muted}"
-                           FontSize="11" VerticalAlignment="Center" Margin="18,0,0,0"/>
+                           FontFamily="{StaticResource FontMono}" FontSize="11" VerticalAlignment="Center" Margin="18,0,0,0"/>
               </Grid>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="b" Property="Background" Value="#2A303C"/></Trigger>
+              <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="b" Property="Background" Value="{StaticResource ControlBgHi}"/></Trigger>
               <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.35"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -861,13 +963,13 @@ $script:CgThemeXaml = @'
     <!-- ============ подсказка ============ -->
     <Style TargetType="ToolTip">
       <Setter Property="Foreground" Value="{StaticResource Text}"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize"   Value="12"/>
       <Setter Property="MaxWidth"   Value="380"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ToolTip">
-            <Border Background="#1D212A" BorderBrush="{StaticResource StrongLine}" BorderThickness="1" CornerRadius="7" Padding="11,8" Margin="6">
+            <Border Background="{StaticResource ControlBg}" BorderBrush="{StaticResource StrongLine}" BorderThickness="1" CornerRadius="3" Padding="11,8" Margin="6">
               <Border.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.5" Color="#000000"/></Border.Effect>
               <ContentPresenter/>
             </Border>
@@ -878,10 +980,10 @@ $script:CgThemeXaml = @'
 
     <!-- ============ полоса хода работы ============ -->
     <Style TargetType="ProgressBar">
-      <Setter Property="Background"  Value="#212631"/>
+      <Setter Property="Background"  Value="{StaticResource ControlBg}"/>
       <Setter Property="Foreground"  Value="{StaticResource Accent}"/>
       <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="Height" Value="3"/>
+      <Setter Property="Height" Value="2"/>
     </Style>
 
     <Style TargetType="GridSplitter">

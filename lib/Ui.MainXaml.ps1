@@ -2,22 +2,26 @@
 #  CookieGuard - Ui.MainXaml.ps1
 #  Разметка главного окна.
 #
-#  Раскладка повторяет «Параметры» Windows 11: слева столбец
-#  разделов, справа страница из карточек. Выбрано не ради
-#  похожести — человек, который открыл программу после взлома,
-#  не должен ещё и разбираться, где у неё что. Он уже знает.
+#  Раскладка прежняя: слева столбец разделов, справа страница.
+#  Выбрано не ради похожести на «Параметры» — человек, который
+#  открыл программу после взлома, не должен ещё и разбираться,
+#  где у неё что. Он уже знает.
 #
-#  Три полосы вместо прежних двух:
+#  Три полосы:
 #    слева  — разделы,
 #    в центре — страница,
 #    справа — разбор выбранной строки.
 #  Раньше разбор жил узкой полосой внизу: в неё не помещалось
 #  ни подробностей, ни кнопок, и половина действий терялась.
-#  Справа места столько же, сколько у текста, и ничего не надо
-#  перекладывать.
 #
-#  Имена всех элементов сохранены прежними: к ним привязаны
-#  обработчики в CookieGuard.ps1.
+#  Вид «Монолит» (2.0): разделы пронумерованы, и тот же номер
+#  стоит над заголовком страницы; панель инструментов и таблица
+#  срастаются в один блок по общей линии; обзор открывается
+#  тремя крупными числами — критично, внимание, в карантине.
+#
+#  Имена всех прежних элементов сохранены: к ним привязаны
+#  обработчики в CookieGuard.ps1. Порядок строк в списке разделов
+#  тоже: по нему построена карта «строка → страница».
 # ============================================================
 
 $script:CgMainXaml = @'
@@ -25,7 +29,7 @@ $script:CgMainXaml = @'
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="CookieGuard" Height="880" Width="1340" MinHeight="660" MinWidth="1080"
-        WindowStyle="None" Background="#0F1115" WindowStartupLocation="CenterScreen">
+        WindowStyle="None" Background="#0C0D10" WindowStartupLocation="CenterScreen">
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" GlassFrameThickness="0"
                         CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -34,15 +38,16 @@ $script:CgMainXaml = @'
   <Window.Resources>
 <!--THEME-->
 
-    <!-- заголовок группы в списке разделов -->
+    <!-- заголовок группы в списке разделов: начинается там же,
+         где названия разделов, а не над номерами -->
     <Style x:Key="NavHeader" TargetType="ListBoxItem">
       <Setter Property="Focusable" Value="False"/>
       <Setter Property="IsHitTestVisible" Value="False"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ListBoxItem">
-            <TextBlock Text="{TemplateBinding Content}" Foreground="#6B7482" FontSize="10.5" FontWeight="SemiBold"
-                       Margin="15,16,0,6"/>
+            <TextBlock Text="{TemplateBinding Content}" Foreground="{StaticResource Muted}" FontSize="10.5"
+                       FontFamily="{StaticResource FontDisplay}" Margin="44,18,0,8"/>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
@@ -52,74 +57,133 @@ $script:CgMainXaml = @'
     <Style x:Key="SettingIcon" TargetType="Border">
       <Setter Property="Width" Value="32"/>
       <Setter Property="Height" Value="32"/>
-      <Setter Property="CornerRadius" Value="16"/>
-      <Setter Property="Background" Value="#232A36"/>
-      <Setter Property="Margin" Value="0,0,14,0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="{StaticResource StrongLine}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Margin" Value="0,0,16,0"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
     <Style x:Key="SettingIconGlyph" TargetType="TextBlock" BasedOn="{StaticResource Glyph}">
-      <Setter Property="FontSize" Value="15"/>
-      <Setter Property="Foreground" Value="#A8BACD"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
     </Style>
     <Style x:Key="SettingName" TargetType="TextBlock">
       <Setter Property="Foreground" Value="{StaticResource Text}"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
+      <Setter Property="FontFamily" Value="{StaticResource FontBody}"/>
       <Setter Property="FontSize" Value="13.5"/>
     </Style>
 
     <Style x:Key="PageHead" TargetType="StackPanel">
-      <Setter Property="Margin" Value="0,0,0,18"/>
+      <Setter Property="Margin" Value="0,0,0,20"/>
+    </Style>
+
+    <!-- панель инструментов над таблицей: стоит вплотную к ней
+         и делит с ней линию, так что вместе они — один блок -->
+    <Style x:Key="ToolStrip" TargetType="Border" BasedOn="{StaticResource Card}">
+      <Setter Property="Padding" Value="12,8"/>
+      <Setter Property="Margin"  Value="0,0,0,-1"/>
+      <Setter Property="Background" Value="{StaticResource NavBg}"/>
+    </Style>
+    <Style x:Key="GridBox" TargetType="Border" BasedOn="{StaticResource Card}">
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Margin"  Value="0"/>
+    </Style>
+    <!-- Сводка под таблицей, как показания под шкалой прибора.
+         Справа от кнопок ей не хватало места: длинная строка
+         «критично: … внимание: … заметки: …» наезжала на вкладки.
+         Пока сводки нет, полосы нет. -->
+    <Style x:Key="Readout" TargetType="Border" BasedOn="{StaticResource Card}">
+      <Setter Property="Padding" Value="14,7"/>
+      <Setter Property="Margin"  Value="0,-1,0,0"/>
+      <Setter Property="Background" Value="{StaticResource NavBg}"/>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding Child.Text, RelativeSource={RelativeSource Self}}" Value="">
+          <Setter Property="Visibility" Value="Collapsed"/>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- ячейка «уровень» во всех таблицах -->
+    <DataTemplate x:Key="SevCell">
+      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <Rectangle Style="{StaticResource SevMark}"/>
+        <TextBlock Text="{Binding Severity}" Style="{StaticResource PillTextAuto}"/>
+      </StackPanel>
+    </DataTemplate>
+
+    <!-- подпись над крупным числом обзора -->
+    <Style x:Key="HeroLabel" TargetType="TextBlock">
+      <Setter Property="FontFamily" Value="{StaticResource FontDisplay}"/>
+      <Setter Property="FontSize"   Value="11"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="HeroNote" TargetType="TextBlock">
+      <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+      <Setter Property="FontSize"   Value="11.5"/>
+      <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
+      <Setter Property="Margin"     Value="0,4,0,0"/>
     </Style>
   </Window.Resources>
 
-  <Border BorderBrush="#262C36" BorderThickness="1">
+  <Border BorderBrush="#1A1D22" BorderThickness="1">
   <Grid>
     <Grid.RowDefinitions>
-      <RowDefinition Height="44"/>
+      <RowDefinition Height="40"/>
       <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
     <!-- ===================== ЗАГОЛОВОК ОКНА ===================== -->
-    <Border Grid.Row="0" Background="#0A0C0F" BorderBrush="#20242C" BorderThickness="0,0,0,1">
+    <Border Grid.Row="0" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
       <Grid x:Name="TitleBar" Background="Transparent">
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
-          <Border Width="24" Height="24" CornerRadius="7" Background="#16314E">
-            <TextBlock Text="&#xE72E;" Style="{StaticResource Glyph}" FontSize="13" Foreground="#3B9EFF"/>
+          <!-- щит с печеньем — тот же знак, что на значке программы,
+               только плоский: на плите объём был бы чужим -->
+          <Viewbox Width="20" Height="20">
+            <Canvas Width="24" Height="24">
+              <Path Data="M12,2 L20,5 L20,11 C20,16.5 16.6,20.4 12,22 C7.4,20.4 4,16.5 4,11 L4,5 Z" Fill="{StaticResource Accent}"/>
+              <Ellipse Canvas.Left="7.7"   Canvas.Top="7.3"   Width="8.6" Height="8.6" Fill="#F3D9A8"/>
+              <Ellipse Canvas.Left="9.65"  Canvas.Top="9.55"  Width="1.9" Height="1.9" Fill="#3A2416"/>
+              <Ellipse Canvas.Left="12.35" Canvas.Top="10.35" Width="1.9" Height="1.9" Fill="#3A2416"/>
+              <Ellipse Canvas.Left="10.55" Canvas.Top="12.25" Width="1.9" Height="1.9" Fill="#3A2416"/>
+            </Canvas>
+          </Viewbox>
+          <TextBlock Text="COOKIEGUARD" FontFamily="{StaticResource FontDisplay}" FontWeight="SemiBold" FontSize="13.5"
+                     Margin="10,0,0,0" VerticalAlignment="Center"/>
+          <Border BorderBrush="{StaticResource StrongLine}" BorderThickness="1" CornerRadius="2" Padding="5,0"
+                  Margin="10,0,0,0" VerticalAlignment="Center">
+            <TextBlock Text="2.0" FontFamily="{StaticResource FontMono}" FontSize="10.5" Foreground="{StaticResource Muted}"/>
           </Border>
-          <TextBlock Text="CookieGuard" FontWeight="SemiBold" FontSize="13.5" Margin="11,0,0,0" VerticalAlignment="Center"/>
-          <Border Width="1" Background="#262C36" Margin="14,12,14,12"/>
-          <TextBlock Text="наблюдение за доступом к cookie и паролям" Style="{StaticResource Sub}"
-                     FontSize="11.5" VerticalAlignment="Center"/>
         </StackPanel>
 
         <!-- Поиск по разделам и по тому, что уже найдено. Окно на
              одиннадцать разделов и таблицы на сотни строк без поиска
              заставляют помнить, где что лежит. -->
-        <Grid HorizontalAlignment="Center" VerticalAlignment="Center" Width="400">
-          <TextBox x:Name="SearchBox" Height="27" Padding="29,0,9,0" VerticalContentAlignment="Center"
-                   Background="#12151B" BorderBrush="#242A34" FontSize="12.5"/>
+        <Grid HorizontalAlignment="Center" VerticalAlignment="Center" Width="420">
+          <TextBox x:Name="SearchBox" Height="28" Padding="29,0,9,0" VerticalContentAlignment="Center"
+                   Background="{StaticResource WinBg}" BorderBrush="{StaticResource Line}" FontSize="12.5"/>
           <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12"
-                     Foreground="#7C8694" VerticalAlignment="Center" Margin="10,0,0,0" IsHitTestVisible="False"/>
+                     Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="10,0,0,0" IsHitTestVisible="False"/>
           <TextBlock x:Name="SearchHint" Text="Найти в разделах и находках" Style="{StaticResource Sub}"
                      FontSize="12" VerticalAlignment="Center" Margin="29,0,0,0" IsHitTestVisible="False"/>
           <Popup x:Name="SearchPop" PlacementTarget="{Binding ElementName=SearchBox}" Placement="Bottom"
-                 AllowsTransparency="True" StaysOpen="False" Width="470" HorizontalOffset="-35">
-            <Border Background="#1D212A" BorderBrush="{StaticResource StrongLine}" BorderThickness="1"
-                    CornerRadius="9" Padding="4" Margin="0,5,0,0">
-              <Border.Effect><DropShadowEffect BlurRadius="22" ShadowDepth="4" Opacity="0.6" Color="#000000"/></Border.Effect>
+                 AllowsTransparency="True" StaysOpen="False" Width="470" HorizontalOffset="-25">
+            <Border Background="{StaticResource ControlBg}" BorderBrush="{StaticResource StrongLine}" BorderThickness="1"
+                    CornerRadius="3" Padding="4" Margin="0,5,0,0">
+              <Border.Effect><DropShadowEffect BlurRadius="18" ShadowDepth="4" Opacity="0.55" Color="#000000"/></Border.Effect>
               <ListBox x:Name="SearchList" Background="Transparent" BorderThickness="0" MaxHeight="360"/>
             </Border>
           </Popup>
         </Grid>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-          <TextBlock x:Name="ChipAdmin" Text="" Style="{StaticResource Sub}" FontSize="11.5" VerticalAlignment="Center" Margin="0,0,14,0"/>
-          <Border Background="#171A21" CornerRadius="11" Padding="10,3" Margin="0,0,8,0" BorderBrush="#242A34" BorderThickness="1">
-            <TextBlock x:Name="ChipAudit" Text="" FontSize="11.5" VerticalAlignment="Center"/>
+          <TextBlock x:Name="ChipAdmin" Text="" Style="{StaticResource Sub}" FontFamily="{StaticResource FontDisplay}"
+                     FontSize="11" VerticalAlignment="Center" Margin="0,0,14,0"/>
+          <Border CornerRadius="2" Padding="10,3" Margin="0,0,8,0" BorderBrush="{StaticResource Line}" BorderThickness="1">
+            <TextBlock x:Name="ChipAudit" Text="" FontFamily="{StaticResource FontDisplay}" FontSize="11" VerticalAlignment="Center"/>
           </Border>
-          <Border Background="#171A21" CornerRadius="11" Padding="10,3" Margin="0,0,14,0" BorderBrush="#242A34" BorderThickness="1">
-            <TextBlock x:Name="ChipMon" Text="" FontSize="11.5" VerticalAlignment="Center"/>
+          <Border CornerRadius="2" Padding="10,3" Margin="0,0,14,0" BorderBrush="{StaticResource Line}" BorderThickness="1">
+            <TextBlock x:Name="ChipMon" Text="" FontFamily="{StaticResource FontDisplay}" FontSize="11" VerticalAlignment="Center"/>
           </Border>
           <Button x:Name="BtnMinW"   Content="&#xE921;" Style="{StaticResource CaptionBtn}"/>
           <Button x:Name="BtnMaxW"   Content="&#xE922;" Style="{StaticResource CaptionBtn}"/>
@@ -139,15 +203,19 @@ $script:CgMainXaml = @'
       </Grid.ColumnDefinitions>
 
       <!-- ========== столбец разделов ========== -->
-      <Border x:Name="NavPanel" Grid.Column="0" Width="252" Background="#0A0C0F" BorderBrush="#20242C" BorderThickness="0,0,1,0">
+      <Border x:Name="NavPanel" Grid.Column="0" Width="252" Background="{StaticResource NavBg}"
+              BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
         <DockPanel>
-          <StackPanel DockPanel.Dock="Top" Margin="12,12,12,6">
+          <StackPanel DockPanel.Dock="Top" Margin="12,10,12,8">
             <Button x:Name="BtnNavToggle" Content="&#xE700;" Style="{StaticResource IconBtn}"
                     HorizontalAlignment="Left" Margin="0,0,0,10" ToolTip="Свернуть столбец разделов"/>
             <StackPanel x:Name="NavActions">
-              <Button x:Name="BtnScan" Content="Проверить систему" Style="{StaticResource Primary}" Height="38" Margin="0,0,0,8"/>
-              <Button x:Name="BtnScanFiles" Content="Проверить файл или папку" Height="36" Margin="0,0,0,0"/>
-              <Button x:Name="BtnMon" Content="Запустить монитор" Height="36" Margin="0,8,0,0"/>
+              <Button x:Name="BtnScan" Content="Проверить систему" Style="{StaticResource Primary}" Height="40"
+                      HorizontalContentAlignment="Left" Margin="0,0,0,8"/>
+              <Button x:Name="BtnScanFiles" Content="Проверить файл или папку" Height="36"
+                      HorizontalContentAlignment="Left" Margin="0,0,0,0"/>
+              <Button x:Name="BtnMon" Content="Запустить монитор" Style="{StaticResource Ghost}" Height="36"
+                      HorizontalContentAlignment="Left" Margin="0,8,0,0"/>
             </StackPanel>
             <!-- Те же три действия, когда столбец свёрнут. Прятать их
                  совсем нельзя: «Проверить систему» — главная кнопка окна. -->
@@ -157,17 +225,20 @@ $script:CgMainXaml = @'
               <Button x:Name="BtnMonMini" Content="&#xE768;" Style="{StaticResource IconBtn}" Margin="0" ToolTip="Запустить монитор"/>
             </StackPanel>
           </StackPanel>
-          <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,6,0,10">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,8,0,10">
+            <!-- Номер вместо значка: тот же номер стоит над заголовком
+                 страницы, и по нему видно, где ты, даже в свёрнутом
+                 столбце. -->
             <ListBox x:Name="Nav" Style="{StaticResource NavList}" ItemContainerStyle="{StaticResource NavItem}">
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="&#xE80F;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                  <TextBlock Text="01" Style="{StaticResource NavNum}"/>
                   <TextBlock Text="Обзор" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="&#xE72E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                  <TextBlock Text="02" Style="{StaticResource NavNum}"/>
                   <TextBlock Text="Защита" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
@@ -175,37 +246,37 @@ $script:CgMainXaml = @'
               <ListBoxItem x:Name="NavHeadWatch" Content="НАБЛЮДЕНИЕ" Style="{StaticResource NavHeader}"/>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="&#xE768;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                  <TextBlock Text="03" Style="{StaticResource NavNum}"/>
                   <TextBlock Text="Монитор" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="&#xE7BA;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                  <TextBlock Text="04" Style="{StaticResource NavNum}"/>
                   <TextBlock Text="Находки" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="&#xE9D9;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                  <TextBlock Text="05" Style="{StaticResource NavNum}"/>
                   <TextBlock Text="Процессы" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="&#xE71D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                  <TextBlock Text="06" Style="{StaticResource NavNum}"/>
                   <TextBlock Text="Расширения" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="&#xE7E8;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                  <TextBlock Text="07" Style="{StaticResource NavNum}"/>
                   <TextBlock Text="Автозапуск" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="&#xE81C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                  <TextBlock Text="08" Style="{StaticResource NavNum}"/>
                   <TextBlock Text="Запуски" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
@@ -213,19 +284,19 @@ $script:CgMainXaml = @'
               <ListBoxItem x:Name="NavHeadAnalyse" Content="РАЗБОР" Style="{StaticResource NavHeader}"/>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="&#xE74D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                  <TextBlock Text="09" Style="{StaticResource NavNum}"/>
                   <TextBlock Text="Карантин" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="&#xE8FB;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                  <TextBlock Text="10" Style="{StaticResource NavNum}"/>
                   <TextBlock Text="Доверенные" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="&#xE8A5;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                  <TextBlock Text="11" Style="{StaticResource NavNum}"/>
                   <TextBlock Text="Журнал" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
@@ -235,7 +306,7 @@ $script:CgMainXaml = @'
       </Border>
 
       <!-- ========== страницы ========== -->
-      <TabControl x:Name="Tabs" Grid.Column="1" Background="#0F1115" BorderThickness="0">
+      <TabControl x:Name="Tabs" Grid.Column="1" Background="{StaticResource WinBg}" BorderThickness="0">
         <TabControl.RenderTransform><TranslateTransform/></TabControl.RenderTransform>
         <TabControl.ItemContainerStyle>
           <Style TargetType="TabItem"><Setter Property="Visibility" Value="Collapsed"/></Style>
@@ -249,47 +320,120 @@ $script:CgMainXaml = @'
         <!-- ========== ОБЗОР ========== -->
         <TabItem Header="Обзор">
           <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="30,26,30,24">
-              <StackPanel Style="{StaticResource PageHead}">
-                <TextBlock Text="Обзор" Style="{StaticResource H1}"/>
-                <TextBlock Text="Состояние наблюдения и итог последней проверки." Style="{StaticResource Sub}" Margin="0,5,0,0"/>
+            <StackPanel>
+              <!-- шапка: заголовок говорит итог, а не имя раздела -->
+              <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="32,26,32,22">
+                <Grid>
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock Text="01 — ОБЗОР" Style="{StaticResource Kicker}"/>
+                    <TextBlock x:Name="HeroHead" Text="Обзор" Style="{StaticResource H1}" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="HeroSub" Text="Состояние наблюдения и итог последней проверки." Style="{StaticResource Sub}"
+                               FontSize="13" Foreground="{StaticResource TextDim}" Margin="0,8,0,0"/>
+                  </StackPanel>
+                  <Button x:Name="HeroGo" Grid.Column="1" Content="Разобрать находки  →" Style="{StaticResource Primary}"
+                          Height="36" VerticalAlignment="Bottom" Margin="16,0,0,0"/>
+                </Grid>
+              </Border>
+
+              <!-- Монолит: три числа и линейка под ними. Крупно — то,
+                   ради чего программу открывают; всё прочее мельче. -->
+              <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+                <StackPanel>
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0" Padding="32,22,24,16">
+                      <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                          <Rectangle Width="8" Height="8" Fill="{StaticResource Crit}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                          <TextBlock Text="КРИТИЧНО" Style="{StaticResource HeroLabel}" Foreground="{StaticResource Crit}"/>
+                        </StackPanel>
+                        <TextBlock x:Name="HeroCrit" Text="—" Style="{StaticResource BigNum}"/>
+                        <TextBlock Text="разберите первыми" Style="{StaticResource HeroNote}"/>
+                      </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0" Padding="32,22,24,16">
+                      <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                          <Rectangle Width="8" Height="8" Fill="{StaticResource Warn}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                          <TextBlock Text="ВНИМАНИЕ" Style="{StaticResource HeroLabel}" Foreground="{StaticResource Warn}"/>
+                        </StackPanel>
+                        <TextBlock x:Name="HeroWarn" Text="—" Style="{StaticResource BigNum}"/>
+                        <TextBlock Text="посмотрите, когда будет время" Style="{StaticResource HeroNote}"/>
+                      </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Padding="32,22,24,16">
+                      <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                          <Rectangle Width="8" Height="8" Stroke="{StaticResource TextDim}" StrokeThickness="1" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                          <TextBlock Text="В КАРАНТИНЕ" Style="{StaticResource HeroLabel}" Foreground="{StaticResource TextDim}"/>
+                        </StackPanel>
+                        <TextBlock x:Name="HeroQuar" Text="—" Style="{StaticResource BigNum}" Foreground="{StaticResource TextDim}"/>
+                        <TextBlock Text="вернуть можно байт в байт" Style="{StaticResource HeroNote}"/>
+                      </StackPanel>
+                    </Border>
+                  </Grid>
+                  <Grid Margin="32,0,32,20">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <!-- Доли критичного и «внимания» в итоге проверки.
+                         До первой проверки линейка серая целиком. -->
+                    <Grid Height="6" VerticalAlignment="Center">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="HeroBarCrit" Width="0*"/>
+                        <ColumnDefinition x:Name="HeroBarWarn" Width="0*"/>
+                        <ColumnDefinition x:Name="HeroBarRest" Width="1*"/>
+                      </Grid.ColumnDefinitions>
+                      <Border Grid.Column="0" Background="{StaticResource Crit}" Margin="0,0,2,0"/>
+                      <Border Grid.Column="1" Background="{StaticResource Warn}"/>
+                      <Border Grid.Column="2" Background="{StaticResource ControlBg}"/>
+                    </Grid>
+                    <TextBlock x:Name="HeroTotal" Grid.Column="1" Text="проверки ещё не было" Style="{StaticResource Stat}" Margin="14,0,0,0"/>
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <StackPanel Margin="32,22,32,26">
+                <TextBlock Text="СОСТОЯНИЕ" Style="{StaticResource GroupLabel}"/>
+                <!-- Приборная панель: ячейки в ровной сетке, соседние
+                     делят рамку. Ячейки собирает Update-Cards. -->
+                <UniformGrid x:Name="Cards" Columns="3" Margin="0,0,1,1"/>
+
+                <TextBlock Text="ЧТО СДЕЛАТЬ СЕЙЧАС" Style="{StaticResource GroupLabel}" Margin="0,26,0,10"/>
+
+                <Border Style="{StaticResource CardRow}">
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Style="{StaticResource SettingIcon}">
+                      <TextBlock Text="&#xE721;" Style="{StaticResource SettingIconGlyph}"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                      <TextBlock Text="Проверить файл или папку" Style="{StaticResource SettingName}"/>
+                      <TextBlock Text="Перетащите что угодно в окно проверки: программа сама распакует архив, спросит пароль и решит, что отправлять на VirusTotal." Style="{StaticResource Sub}" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <Button x:Name="BtnScanFiles2" Grid.Column="2" Content="Открыть" Margin="14,0,0,0"/>
+                  </Grid>
+                </Border>
+
+                <Border Style="{StaticResource CardRow}">
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Style="{StaticResource SettingIcon}">
+                      <TextBlock Text="&#xE8A5;" Style="{StaticResource SettingIconGlyph}"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                      <TextBlock Text="Отчёты, улики и справка" Style="{StaticResource SettingName}"/>
+                      <TextBlock Text="Сохранённые проверки, подробности по каждой тревоге и описание программы." Style="{StaticResource Sub}" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
+                      <Button x:Name="BtnReports"  Content="Отчёты"/>
+                      <Button x:Name="BtnEvidence" Content="Улики"/>
+                      <Button x:Name="BtnHelp"     Content="Справка" Style="{StaticResource Ghost}" Margin="0"/>
+                    </StackPanel>
+                  </Grid>
+                </Border>
               </StackPanel>
-
-              <WrapPanel x:Name="Cards"/>
-
-              <TextBlock Text="ЧТО СДЕЛАТЬ СЕЙЧАС" Style="{StaticResource Sub}" FontSize="10.5" FontWeight="SemiBold" Margin="2,14,0,10"/>
-
-              <Border Style="{StaticResource CardRow}">
-                <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}">
-                    <TextBlock Text="&#xE721;" Style="{StaticResource SettingIconGlyph}"/>
-                  </Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="Проверить файл или папку" Style="{StaticResource SettingName}"/>
-                    <TextBlock Text="Перетащите что угодно в окно проверки: программа сама распакует архив, спросит пароль и решит, что отправлять на VirusTotal." Style="{StaticResource Sub}" Margin="0,3,0,0"/>
-                  </StackPanel>
-                  <Button x:Name="BtnScanFiles2" Grid.Column="2" Content="Открыть" Margin="14,0,0,0"/>
-                </Grid>
-              </Border>
-
-              <Border Style="{StaticResource CardRow}">
-                <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}">
-                    <TextBlock Text="&#xE8A5;" Style="{StaticResource SettingIconGlyph}"/>
-                  </Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="Отчёты, улики и справка" Style="{StaticResource SettingName}"/>
-                    <TextBlock Text="Сохранённые проверки, подробности по каждой тревоге и описание программы." Style="{StaticResource Sub}" Margin="0,3,0,0"/>
-                  </StackPanel>
-                  <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
-                    <Button x:Name="BtnReports"  Content="Отчёты"/>
-                    <Button x:Name="BtnEvidence" Content="Улики"/>
-                    <Button x:Name="BtnHelp"     Content="Справка" Margin="0"/>
-                  </StackPanel>
-                </Grid>
-              </Border>
             </StackPanel>
           </ScrollViewer>
         </TabItem>
@@ -297,13 +441,14 @@ $script:CgMainXaml = @'
         <!-- ========== ЗАЩИТА ========== -->
         <TabItem Header="Защита">
           <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="30,26,30,24">
+            <StackPanel Margin="32,26,32,24">
               <StackPanel Style="{StaticResource PageHead}">
+                <TextBlock Text="02 — ЗАЩИТА" Style="{StaticResource Kicker}"/>
                 <TextBlock Text="Защита" Style="{StaticResource H1}"/>
-                <TextBlock Text="Что программа делает постоянно, без вашего участия." Style="{StaticResource Sub}" Margin="0,5,0,0"/>
+                <TextBlock Text="Что программа делает постоянно, без вашего участия." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
               </StackPanel>
 
-              <TextBlock Text="НАБЛЮДЕНИЕ" Style="{StaticResource Sub}" FontSize="10.5" FontWeight="SemiBold" Margin="2,0,0,10"/>
+              <TextBlock Text="НАБЛЮДЕНИЕ" Style="{StaticResource GroupLabel}"/>
 
               <Border Style="{StaticResource CardRow}">
                 <Grid>
@@ -341,7 +486,7 @@ $script:CgMainXaml = @'
                 </Grid>
               </Border>
 
-              <Border Style="{StaticResource CardRow}" Margin="0,0,0,20">
+              <Border Style="{StaticResource CardRow}" Margin="0,0,0,26">
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                   <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE74D;" Style="{StaticResource SettingIconGlyph}"/></Border>
@@ -353,7 +498,7 @@ $script:CgMainXaml = @'
                 </Grid>
               </Border>
 
-              <TextBlock Text="ПРОВЕРКИ" Style="{StaticResource Sub}" FontSize="10.5" FontWeight="SemiBold" Margin="2,0,0,10"/>
+              <TextBlock Text="ПРОВЕРКИ" Style="{StaticResource GroupLabel}"/>
 
               <Border Style="{StaticResource CardRow}">
                 <Grid>
@@ -364,7 +509,7 @@ $script:CgMainXaml = @'
                     <TextBlock x:Name="BaseStats" Text="" Style="{StaticResource Sub}" Margin="0,3,0,0"/>
                   </StackPanel>
                   <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
-                    <Button x:Name="BtnBaseNew"  Content="Снять заново"/>
+                    <Button x:Name="BtnBaseNew"  Content="Снять заново" Style="{StaticResource Ghost}"/>
                     <Button x:Name="BtnBaseDiff" Content="Сверить" Margin="0"/>
                   </StackPanel>
                 </Grid>
@@ -380,13 +525,13 @@ $script:CgMainXaml = @'
                   </StackPanel>
                   <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
                     <Button x:Name="BtnVtScan" Content="Проверить файлы"/>
-                    <Button x:Name="BtnVtKey"  Content="Ключ"/>
-                    <Button x:Name="BtnVtSite" Content="Получить ключ" Margin="0"/>
+                    <Button x:Name="BtnVtKey"  Content="Ключ" Style="{StaticResource Ghost}"/>
+                    <Button x:Name="BtnVtSite" Content="Получить ключ" Style="{StaticResource Ghost}" Margin="0"/>
                   </StackPanel>
                 </Grid>
               </Border>
 
-              <Border Style="{StaticResource CardRow}" Margin="0,0,0,20">
+              <Border Style="{StaticResource CardRow}" Margin="0,0,0,26">
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*" MinWidth="200"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                   <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE968;" Style="{StaticResource SettingIconGlyph}"/></Border>
@@ -397,15 +542,15 @@ $script:CgMainXaml = @'
                   <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
                     <ComboBox x:Name="CmbDns" Width="170" Margin="0,0,8,0"/>
                     <Button x:Name="BtnDnsOn"   Content="Включить"/>
-                    <Button x:Name="BtnDnsOff"  Content="Вернуть"/>
-                    <Button x:Name="BtnDnsTest" Content="Проверить" Margin="0"/>
+                    <Button x:Name="BtnDnsOff"  Content="Вернуть" Style="{StaticResource Ghost}"/>
+                    <Button x:Name="BtnDnsTest" Content="Проверить" Style="{StaticResource Ghost}" Margin="0"/>
                   </StackPanel>
                 </Grid>
               </Border>
 
-              <TextBlock Text="ОБНОВЛЕНИЕ" Style="{StaticResource Sub}" FontSize="10.5" FontWeight="SemiBold" Margin="2,0,0,10"/>
+              <TextBlock Text="ОБНОВЛЕНИЕ" Style="{StaticResource GroupLabel}"/>
 
-              <Border Style="{StaticResource CardRow}" Margin="0,0,0,20">
+              <Border Style="{StaticResource CardRow}" Margin="0,0,0,26">
                 <Grid>
                   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                   <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE896;" Style="{StaticResource SettingIconGlyph}"/></Border>
@@ -421,7 +566,7 @@ $script:CgMainXaml = @'
                 </Grid>
               </Border>
 
-              <TextBlock Text="ЕСЛИ ЧТО-ТО НЕ ВКЛЮЧАЕТСЯ" Style="{StaticResource Sub}" FontSize="10.5" FontWeight="SemiBold" Margin="2,0,0,10"/>
+              <TextBlock Text="ЕСЛИ ЧТО-ТО НЕ ВКЛЮЧАЕТСЯ" Style="{StaticResource GroupLabel}"/>
 
               <Border Style="{StaticResource CardRow}" Margin="0,0,0,20">
                 <Grid>
@@ -450,37 +595,38 @@ $script:CgMainXaml = @'
 
         <!-- ========== МОНИТОР ========== -->
         <TabItem Header="Монитор">
-          <DockPanel Margin="30,26,30,22">
+          <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
-              <TextBlock Text="Монитор" Style="{StaticResource H1}"/>
-              <TextBlock Text="Живые события: кто прямо сейчас обращается к cookie и паролям." Style="{StaticResource Sub}" Margin="0,5,0,0"/>
+              <TextBlock Text="03 — МОНИТОР" Style="{StaticResource Kicker}"/>
+              <TextBlock Text="Кто трогает cookie и пароли" Style="{StaticResource H1}"/>
+              <TextBlock Text="Живые события: кто прямо сейчас обращается к cookie и паролям." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
-            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10">
-              <Grid>
-                <StackPanel Orientation="Horizontal">
+            <Border DockPanel.Dock="Top" Style="{StaticResource ToolStrip}">
+              <WrapPanel>
                   <Button x:Name="BtnMon2" Content="Запустить монитор" Style="{StaticResource Primary}"/>
                   <Button x:Name="BtnMonClear" Content="Очистить" Style="{StaticResource Ghost}"/>
                   <CheckBox x:Name="ChkShowOk" Content="показывать обычные обращения браузера" Margin="12,0,0,0"/>
-                </StackPanel>
-                <TextBlock x:Name="MonStats" Text="" Style="{StaticResource Sub}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-              </Grid>
+              </WrapPanel>
             </Border>
-            <Border Style="{StaticResource Card}" Padding="4" Margin="0">
+            <Border DockPanel.Dock="Bottom" Style="{StaticResource Readout}">
+              <TextBlock x:Name="MonStats" Text="" Style="{StaticResource Stat}" TextTrimming="CharacterEllipsis"/>
+            </Border>
+            <Border Style="{StaticResource GridBox}">
               <DataGrid x:Name="GridMon">
                 <DataGrid.Columns>
-                  <DataGridTextColumn Header="ВРЕМЯ"   Binding="{Binding TimeText}" Width="78"/>
-                  <DataGridTemplateColumn Header="УРОВЕНЬ" Width="104" SortMemberPath="Order">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate>
-                        <Border Style="{StaticResource PillAuto}">
-                          <TextBlock Text="{Binding Severity}" Style="{StaticResource PillTextAuto}"/>
-                        </Border>
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
+                  <DataGridTextColumn Header="ВРЕМЯ"   Binding="{Binding TimeText}" Width="78">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/><Setter Property="Foreground" Value="{StaticResource Muted}"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
+                  <DataGridTemplateColumn Header="УРОВЕНЬ" Width="96" SortMemberPath="Order" CellTemplate="{StaticResource SevCell}"/>
                   <DataGridTextColumn Header="ТИП"     Binding="{Binding Kind}"     Width="100"/>
                   <DataGridTextColumn Header="СОБЫТИЕ" Binding="{Binding Title}"    Width="*"/>
-                  <DataGridTextColumn Header="ПРОЦЕСС" Binding="{Binding Process}"  Width="210"/>
+                  <DataGridTextColumn Header="ПРОЦЕСС" Binding="{Binding Process}"  Width="210">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
                 </DataGrid.Columns>
               </DataGrid>
             </Border>
@@ -489,41 +635,34 @@ $script:CgMainXaml = @'
 
         <!-- ========== НАХОДКИ ========== -->
         <TabItem Header="Находки">
-          <DockPanel Margin="30,26,30,22">
+          <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
+              <TextBlock Text="04 — НАХОДКИ" Style="{StaticResource Kicker}"/>
               <TextBlock Text="Находки" Style="{StaticResource H1}"/>
-              <TextBlock Text="Итог проверки системы. Щёлкните строку — справа появится разбор." Style="{StaticResource Sub}" Margin="0,5,0,0"/>
+              <TextBlock Text="Итог проверки системы. Щёлкните строку — справа появится разбор." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
-            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10">
-              <Grid>
-                <StackPanel Orientation="Horizontal">
+            <Border DockPanel.Dock="Top" Style="{StaticResource ToolStrip}">
+              <WrapPanel>
                   <Button x:Name="BtnScan2" Content="Проверить систему" Style="{StaticResource Primary}"/>
                   <Button x:Name="BtnSaveReport" Content="Сохранить отчёт" Style="{StaticResource Ghost}"/>
                   <!-- Галочка «только важное» умела два состояния из
                        четырёх нужных. Оставлена скрытой: на неё ссылается
                        разбор, который показывает все строки подряд. -->
                   <CheckBox x:Name="ChkOnlyBad" Content="только важное" IsChecked="True" Visibility="Collapsed" Width="0"/>
-                  <Border Width="1" Background="#20242C" Margin="10,5,10,5"/>
+                  <Border Width="1" Background="{StaticResource Line}" Margin="2,4,6,4"/>
                   <RadioButton x:Name="TabFindBad"  Style="{StaticResource SegTab}" Content="Важное" IsChecked="True" GroupName="FindFilter"/>
                   <RadioButton x:Name="TabFindCrit" Style="{StaticResource SegTab}" Content="Критично" GroupName="FindFilter"/>
                   <RadioButton x:Name="TabFindWarn" Style="{StaticResource SegTab}" Content="Внимание" GroupName="FindFilter"/>
                   <RadioButton x:Name="TabFindAll"  Style="{StaticResource SegTab}" Content="Все" GroupName="FindFilter"/>
-                </StackPanel>
-                <TextBlock x:Name="ScanStats" Text="" Style="{StaticResource Sub}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-              </Grid>
+              </WrapPanel>
             </Border>
-            <Border Style="{StaticResource Card}" Padding="4" Margin="0">
+            <Border DockPanel.Dock="Bottom" Style="{StaticResource Readout}">
+              <TextBlock x:Name="ScanStats" Text="" Style="{StaticResource Stat}" TextTrimming="CharacterEllipsis"/>
+            </Border>
+            <Border Style="{StaticResource GridBox}">
               <DataGrid x:Name="GridFind">
                 <DataGrid.Columns>
-                  <DataGridTemplateColumn Header="УРОВЕНЬ" Width="104" SortMemberPath="Order">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate>
-                        <Border Style="{StaticResource PillAuto}">
-                          <TextBlock Text="{Binding Severity}" Style="{StaticResource PillTextAuto}"/>
-                        </Border>
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
+                  <DataGridTemplateColumn Header="УРОВЕНЬ" Width="96" SortMemberPath="Order" CellTemplate="{StaticResource SevCell}"/>
                   <DataGridTextColumn Header="РАЗДЕЛ"  Binding="{Binding Area}"     Width="150"/>
                   <DataGridTextColumn Header="НАХОДКА" Binding="{Binding Title}"    Width="*"/>
                 </DataGrid.Columns>
@@ -534,37 +673,42 @@ $script:CgMainXaml = @'
 
         <!-- ========== ПРОЦЕССЫ ========== -->
         <TabItem Header="Процессы">
-          <DockPanel Margin="30,26,30,22">
+          <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
+              <TextBlock Text="05 — ПРОЦЕССЫ" Style="{StaticResource Kicker}"/>
               <TextBlock Text="Процессы" Style="{StaticResource H1}"/>
-              <TextBlock Text="Что сейчас запущено, кем подписано и откуда взялось." Style="{StaticResource Sub}" Margin="0,5,0,0"/>
+              <TextBlock Text="Что сейчас запущено, кем подписано и откуда взялось." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
-            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10">
-              <Grid>
-                <StackPanel Orientation="Horizontal">
+            <Border DockPanel.Dock="Top" Style="{StaticResource ToolStrip}">
+              <WrapPanel>
                   <Button x:Name="BtnProcRefresh" Content="Обновить" Style="{StaticResource Primary}"/>
                   <CheckBox x:Name="ChkOnlyRisky" Content="только подозрительные" IsChecked="True" Margin="12,0,0,0"/>
-                </StackPanel>
-                <TextBlock x:Name="ProcStats" Text="" Style="{StaticResource Sub}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-              </Grid>
+              </WrapPanel>
             </Border>
-            <Border Style="{StaticResource Card}" Padding="4" Margin="0">
+            <Border DockPanel.Dock="Bottom" Style="{StaticResource Readout}">
+              <TextBlock x:Name="ProcStats" Text="" Style="{StaticResource Stat}" TextTrimming="CharacterEllipsis"/>
+            </Border>
+            <Border Style="{StaticResource GridBox}">
               <DataGrid x:Name="GridProc">
                 <DataGrid.Columns>
-                  <DataGridTextColumn Header="РИСК"    Binding="{Binding Risk}"      Width="66"/>
-                  <DataGridTemplateColumn Header="УРОВЕНЬ" Width="104" SortMemberPath="Order">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate>
-                        <Border Style="{StaticResource PillAuto}">
-                          <TextBlock Text="{Binding Severity}" Style="{StaticResource PillTextAuto}"/>
-                        </Border>
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
+                  <DataGridTextColumn Header="РИСК"    Binding="{Binding Risk}"      Width="66">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
+                  <DataGridTemplateColumn Header="УРОВЕНЬ" Width="96" SortMemberPath="Order" CellTemplate="{StaticResource SevCell}"/>
                   <DataGridTextColumn Header="ИМЯ"     Binding="{Binding Name}"      Width="200"/>
-                  <DataGridTextColumn Header="PID"     Binding="{Binding Id}"        Width="70"/>
+                  <DataGridTextColumn Header="PID"     Binding="{Binding Id}"        Width="70">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/><Setter Property="Foreground" Value="{StaticResource Muted}"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
                   <DataGridTextColumn Header="ПОДПИСЬ" Binding="{Binding Signature}" Width="240"/>
-                  <DataGridTextColumn Header="ПУТЬ"    Binding="{Binding Path}"      Width="*"/>
+                  <DataGridTextColumn Header="ПУТЬ"    Binding="{Binding Path}"      Width="*">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
                 </DataGrid.Columns>
               </DataGrid>
             </Border>
@@ -573,32 +717,25 @@ $script:CgMainXaml = @'
 
         <!-- ========== РАСШИРЕНИЯ ========== -->
         <TabItem Header="Расширения">
-          <DockPanel Margin="30,26,30,22">
+          <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
+              <TextBlock Text="06 — РАСШИРЕНИЯ" Style="{StaticResource Kicker}"/>
               <TextBlock Text="Расширения браузеров" Style="{StaticResource H1}"/>
-              <TextBlock Text="Расширение с правом читать все сайты видит ваши сессии так же, как вы." Style="{StaticResource Sub}" Margin="0,5,0,0"/>
+              <TextBlock Text="Расширение с правом читать все сайты видит ваши сессии так же, как вы." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
-            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10">
-              <Grid>
-                <StackPanel Orientation="Horizontal">
+            <Border DockPanel.Dock="Top" Style="{StaticResource ToolStrip}">
+              <WrapPanel>
                   <Button x:Name="BtnExtRefresh" Content="Обновить" Style="{StaticResource Primary}"/>
                   <Button x:Name="BtnExtStore" Content="Открыть в магазине" Style="{StaticResource Ghost}"/>
-                </StackPanel>
-                <TextBlock x:Name="ExtStats" Text="" Style="{StaticResource Sub}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-              </Grid>
+              </WrapPanel>
             </Border>
-            <Border Style="{StaticResource Card}" Padding="4" Margin="0">
+            <Border DockPanel.Dock="Bottom" Style="{StaticResource Readout}">
+              <TextBlock x:Name="ExtStats" Text="" Style="{StaticResource Stat}" TextTrimming="CharacterEllipsis"/>
+            </Border>
+            <Border Style="{StaticResource GridBox}">
               <DataGrid x:Name="GridExt">
                 <DataGrid.Columns>
-                  <DataGridTemplateColumn Header="УРОВЕНЬ" Width="104" SortMemberPath="Order">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate>
-                        <Border Style="{StaticResource PillAuto}">
-                          <TextBlock Text="{Binding Severity}" Style="{StaticResource PillTextAuto}"/>
-                        </Border>
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
+                  <DataGridTemplateColumn Header="УРОВЕНЬ" Width="96" SortMemberPath="Order" CellTemplate="{StaticResource SevCell}"/>
                   <DataGridTextColumn Header="БРАУЗЕР"  Binding="{Binding Browser}"  Width="95"/>
                   <DataGridTextColumn Header="НАЗВАНИЕ" Binding="{Binding Name}"     Width="260"/>
                   <DataGridTextColumn Header="ПРАВА"    Binding="{Binding Perms}"    Width="300"/>
@@ -611,32 +748,31 @@ $script:CgMainXaml = @'
 
         <!-- ========== АВТОЗАПУСК ========== -->
         <TabItem Header="Автозапуск">
-          <DockPanel Margin="30,26,30,22">
+          <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
+              <TextBlock Text="07 — АВТОЗАПУСК" Style="{StaticResource Kicker}"/>
               <TextBlock Text="Автозапуск" Style="{StaticResource H1}"/>
-              <TextBlock Text="Реестр, папки автозагрузки, задачи планировщика и службы." Style="{StaticResource Sub}" Margin="0,5,0,0"/>
+              <TextBlock Text="Реестр, папки автозагрузки, задачи планировщика и службы." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
-            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10">
-              <Grid>
-                <Button x:Name="BtnAutoRefresh" Content="Обновить" Style="{StaticResource Primary}" HorizontalAlignment="Left"/>
-                <TextBlock x:Name="AutoStats" Text="" Style="{StaticResource Sub}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-              </Grid>
+            <Border DockPanel.Dock="Top" Style="{StaticResource ToolStrip}">
+              <WrapPanel>
+                <Button x:Name="BtnAutoRefresh" Content="Обновить" Style="{StaticResource Primary}"/>
+              </WrapPanel>
             </Border>
-            <Border Style="{StaticResource Card}" Padding="4" Margin="0">
+            <Border DockPanel.Dock="Bottom" Style="{StaticResource Readout}">
+              <TextBlock x:Name="AutoStats" Text="" Style="{StaticResource Stat}" TextTrimming="CharacterEllipsis"/>
+            </Border>
+            <Border Style="{StaticResource GridBox}">
               <DataGrid x:Name="GridAuto">
                 <DataGrid.Columns>
-                  <DataGridTemplateColumn Header="УРОВЕНЬ" Width="104" SortMemberPath="Order">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate>
-                        <Border Style="{StaticResource PillAuto}">
-                          <TextBlock Text="{Binding Severity}" Style="{StaticResource PillTextAuto}"/>
-                        </Border>
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
+                  <DataGridTemplateColumn Header="УРОВЕНЬ" Width="96" SortMemberPath="Order" CellTemplate="{StaticResource SevCell}"/>
                   <DataGridTextColumn Header="ТИП"     Binding="{Binding Kind}"     Width="150"/>
                   <DataGridTextColumn Header="ИМЯ"     Binding="{Binding Name}"     Width="250"/>
-                  <DataGridTextColumn Header="КОМАНДА" Binding="{Binding Command}"  Width="*"/>
+                  <DataGridTextColumn Header="КОМАНДА" Binding="{Binding Command}"  Width="*">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
                 </DataGrid.Columns>
               </DataGrid>
             </Border>
@@ -645,36 +781,37 @@ $script:CgMainXaml = @'
 
         <!-- ========== ЗАПУСКИ ========== -->
         <TabItem Header="Запуски">
-          <DockPanel Margin="30,26,30,22">
+          <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
+              <TextBlock Text="08 — ЗАПУСКИ" Style="{StaticResource Kicker}"/>
               <TextBlock Text="История запусков" Style="{StaticResource H1}"/>
-              <TextBlock Text="Что запускалось за последние часы и кто это запустил." Style="{StaticResource Sub}" Margin="0,5,0,0"/>
+              <TextBlock Text="Что запускалось за последние часы и кто это запустил." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
-            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10">
-              <Grid>
-                <StackPanel Orientation="Horizontal">
+            <Border DockPanel.Dock="Top" Style="{StaticResource ToolStrip}">
+              <WrapPanel>
                   <Button x:Name="BtnRunRefresh" Content="Обновить" Style="{StaticResource Primary}"/>
                   <CheckBox x:Name="ChkRunOnlyBad" Content="только необычные" Margin="12,0,0,0"/>
-                </StackPanel>
-                <TextBlock x:Name="RunStats" Text="" Style="{StaticResource Sub}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-              </Grid>
+              </WrapPanel>
             </Border>
-            <Border Style="{StaticResource Card}" Padding="4" Margin="0">
+            <Border DockPanel.Dock="Bottom" Style="{StaticResource Readout}">
+              <TextBlock x:Name="RunStats" Text="" Style="{StaticResource Stat}" TextTrimming="CharacterEllipsis"/>
+            </Border>
+            <Border Style="{StaticResource GridBox}">
               <DataGrid x:Name="GridRun">
                 <DataGrid.Columns>
-                  <DataGridTextColumn Header="ВРЕМЯ"       Binding="{Binding TimeText}" Width="80"/>
-                  <DataGridTemplateColumn Header="УРОВЕНЬ" Width="104" SortMemberPath="Order">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate>
-                        <Border Style="{StaticResource PillAuto}">
-                          <TextBlock Text="{Binding Severity}" Style="{StaticResource PillTextAuto}"/>
-                        </Border>
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
+                  <DataGridTextColumn Header="ВРЕМЯ"       Binding="{Binding TimeText}" Width="80">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/><Setter Property="Foreground" Value="{StaticResource Muted}"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
+                  <DataGridTemplateColumn Header="УРОВЕНЬ" Width="96" SortMemberPath="Order" CellTemplate="{StaticResource SevCell}"/>
                   <DataGridTextColumn Header="ПРОГРАММА"   Binding="{Binding Name}"     Width="200"/>
                   <DataGridTextColumn Header="ЗАПУЩЕНА ИЗ" Binding="{Binding Parent}"   Width="170"/>
-                  <DataGridTextColumn Header="КОМАНДА"     Binding="{Binding Command}"  Width="*"/>
+                  <DataGridTextColumn Header="КОМАНДА"     Binding="{Binding Command}"  Width="*">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
                 </DataGrid.Columns>
               </DataGrid>
             </Border>
@@ -683,29 +820,38 @@ $script:CgMainXaml = @'
 
         <!-- ========== КАРАНТИН ========== -->
         <TabItem Header="Карантин">
-          <DockPanel Margin="30,26,30,22">
+          <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
+              <TextBlock Text="09 — КАРАНТИН" Style="{StaticResource Kicker}"/>
               <TextBlock Text="Карантин" Style="{StaticResource H1}"/>
-              <TextBlock Text="Спрятанные файлы. Запустить их нельзя, вернуть — можно, байт в байт." Style="{StaticResource Sub}" Margin="0,5,0,0"/>
+              <TextBlock Text="Спрятанные файлы. Запустить их нельзя, вернуть — можно, байт в байт." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
-            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10">
-              <Grid>
-                <StackPanel Orientation="Horizontal">
+            <Border DockPanel.Dock="Top" Style="{StaticResource ToolStrip}">
+              <WrapPanel>
                   <Button x:Name="BtnQuarRefresh" Content="Обновить" Style="{StaticResource Primary}"/>
                   <Button x:Name="BtnQuarRestore" Content="Восстановить"/>
                   <Button x:Name="BtnQuarDelete"  Content="Удалить насовсем" Style="{StaticResource Danger}"/>
                   <Button x:Name="BtnQuarFolder"  Content="Папка карантина" Style="{StaticResource Ghost}"/>
-                </StackPanel>
-                <TextBlock x:Name="QuarStats" Text="" Style="{StaticResource Sub}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-              </Grid>
+              </WrapPanel>
             </Border>
-            <Border Style="{StaticResource Card}" Padding="4" Margin="0">
+            <Border DockPanel.Dock="Bottom" Style="{StaticResource Readout}">
+              <TextBlock x:Name="QuarStats" Text="" Style="{StaticResource Stat}" TextTrimming="CharacterEllipsis"/>
+            </Border>
+            <Border Style="{StaticResource GridBox}">
               <DataGrid x:Name="GridQuar">
                 <DataGrid.Columns>
-                  <DataGridTextColumn Header="В КАРАНТИНЕ С" Binding="{Binding QuarantinedText}" Width="150"/>
+                  <DataGridTextColumn Header="В КАРАНТИНЕ С" Binding="{Binding QuarantinedText}" Width="150">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/><Setter Property="Foreground" Value="{StaticResource Muted}"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
                   <DataGridTextColumn Header="ФАЙЛ"          Binding="{Binding Name}"           Width="220"/>
                   <DataGridTextColumn Header="ПРИЧИНА"       Binding="{Binding Reason}"         Width="240"/>
-                  <DataGridTextColumn Header="БЫЛ ПО ПУТИ"   Binding="{Binding OriginalPath}"   Width="*"/>
+                  <DataGridTextColumn Header="БЫЛ ПО ПУТИ"   Binding="{Binding OriginalPath}"   Width="*">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
                 </DataGrid.Columns>
               </DataGrid>
             </Border>
@@ -714,28 +860,33 @@ $script:CgMainXaml = @'
 
         <!-- ========== ДОВЕРЕННЫЕ ========== -->
         <TabItem Header="Доверенные">
-          <DockPanel Margin="30,26,30,22">
+          <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
+              <TextBlock Text="10 — ДОВЕРЕННЫЕ" Style="{StaticResource Kicker}"/>
               <TextBlock Text="Доверенные" Style="{StaticResource H1}"/>
-              <TextBlock Text="То, про что вы уже разобрались. Столбец «действует на» показывает, насколько широко." Style="{StaticResource Sub}" Margin="0,5,0,0"/>
+              <TextBlock Text="То, про что вы уже разобрались. Столбец «действует на» показывает, насколько широко." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
-            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10">
-              <Grid>
-                <StackPanel Orientation="Horizontal">
+            <Border DockPanel.Dock="Top" Style="{StaticResource ToolStrip}">
+              <WrapPanel>
                   <Button x:Name="BtnTrustRefresh" Content="Обновить" Style="{StaticResource Primary}"/>
                   <Button x:Name="BtnTrustRevoke" Content="Снять доверие" Style="{StaticResource Danger}"/>
-                </StackPanel>
-                <TextBlock x:Name="TrustStats" Text="" Style="{StaticResource Sub}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-              </Grid>
+              </WrapPanel>
             </Border>
-            <Border Style="{StaticResource Card}" Padding="4" Margin="0">
+            <Border DockPanel.Dock="Bottom" Style="{StaticResource Readout}">
+              <TextBlock x:Name="TrustStats" Text="" Style="{StaticResource Stat}" TextTrimming="CharacterEllipsis"/>
+            </Border>
+            <Border Style="{StaticResource GridBox}">
               <DataGrid x:Name="GridTrust">
                 <DataGrid.Columns>
                   <DataGridTextColumn Header="ОБЛАСТЬ"      Binding="{Binding Kind}"      Width="200"/>
                   <DataGridTextColumn Header="НАЗВАНИЕ"     Binding="{Binding Name}"      Width="200"/>
                   <DataGridTextColumn Header="ДЕЙСТВУЕТ НА" Binding="{Binding Covers}"    Width="*"/>
                   <DataGridTextColumn Header="ПРИЧИНА"      Binding="{Binding Note}"      Width="200"/>
-                  <DataGridTextColumn Header="ДОБАВЛЕНО"    Binding="{Binding AddedText}" Width="140"/>
+                  <DataGridTextColumn Header="ДОБАВЛЕНО"    Binding="{Binding AddedText}" Width="140">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/><Setter Property="Foreground" Value="{StaticResource Muted}"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
                 </DataGrid.Columns>
               </DataGrid>
             </Border>
@@ -744,12 +895,13 @@ $script:CgMainXaml = @'
 
         <!-- ========== ЖУРНАЛ ========== -->
         <TabItem Header="Журнал">
-          <DockPanel Margin="30,26,30,22">
+          <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
+              <TextBlock Text="11 — ЖУРНАЛ" Style="{StaticResource Kicker}"/>
               <TextBlock Text="Журнал" Style="{StaticResource H1}"/>
-              <TextBlock Text="Что программа делала и когда." Style="{StaticResource Sub}" Margin="0,5,0,0"/>
+              <TextBlock Text="Что программа делала и когда." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
-            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10">
+            <Border DockPanel.Dock="Top" Style="{StaticResource ToolStrip}">
               <StackPanel Orientation="Horizontal">
                 <Button x:Name="BtnLogRefresh" Content="Обновить" Style="{StaticResource Primary}"/>
                 <Button x:Name="BtnLogFolder" Content="Папка журналов" Style="{StaticResource Ghost}"/>
@@ -762,40 +914,40 @@ $script:CgMainXaml = @'
       </TabControl>
 
       <!-- ========== разбор выбранной строки ========== -->
-      <Border x:Name="Inspector" Grid.Column="2" Width="412" Background="#0A0C0F"
-              BorderBrush="#20242C" BorderThickness="1,0,0,0" Visibility="Collapsed">
+      <Border x:Name="Inspector" Grid.Column="2" Width="412" Background="{StaticResource NavBg}"
+              BorderBrush="{StaticResource Line}" BorderThickness="1,0,0,0" Visibility="Collapsed">
         <DockPanel>
-          <Grid DockPanel.Dock="Top" Margin="20,18,14,0">
-            <StackPanel Margin="0,0,34,0">
-              <TextBlock x:Name="InspKind" Text="ПОДРОБНОСТИ" Style="{StaticResource Sub}" FontSize="10.5" FontWeight="SemiBold"/>
-              <TextBlock x:Name="InspTitle" Text="" Style="{StaticResource H2}" FontSize="15" TextWrapping="Wrap" Margin="0,6,0,0"/>
+          <Grid DockPanel.Dock="Top" Margin="24,22,16,0">
+            <StackPanel Margin="0,0,40,0">
+              <TextBlock x:Name="InspKind" Text="ПОДРОБНОСТИ" Style="{StaticResource Kicker}" Margin="0"/>
+              <TextBlock x:Name="InspTitle" Text="" Style="{StaticResource H2}" TextWrapping="Wrap" Margin="0,8,0,0"/>
             </StackPanel>
-            <Button x:Name="BtnInspClose" Content="&#xE8BB;" Style="{StaticResource CaptionBtn}" Width="30" Height="30"
+            <Button x:Name="BtnInspClose" Content="&#xE8BB;" Style="{StaticResource CaptionBtn}" Width="32" Height="32"
                     HorizontalAlignment="Right" VerticalAlignment="Top"/>
           </Grid>
 
-          <Border DockPanel.Dock="Top" Height="1" Background="#20242C" Margin="20,16,20,0"/>
+          <Border DockPanel.Dock="Top" Height="1" Background="{StaticResource Line}" Margin="0,18,0,0"/>
 
-          <StackPanel DockPanel.Dock="Top" Margin="20,14,20,0">
-            <TextBlock Text="ЧТО МОЖНО СДЕЛАТЬ" Style="{StaticResource Sub}" FontSize="10.5" FontWeight="SemiBold" Margin="0,0,0,9"/>
+          <StackPanel DockPanel.Dock="Top" Margin="24,16,24,0">
+            <TextBlock Text="ЧТО МОЖНО СДЕЛАТЬ" Style="{StaticResource GroupLabel}"/>
             <WrapPanel>
               <Button x:Name="BtnTrust"    Content="Доверять" Style="{StaticResource Good}" Margin="0,0,7,7"/>
               <Button x:Name="BtnExplorer" Content="В проводнике" Margin="0,0,7,7"/>
               <Button x:Name="BtnWeb"      Content="Искать в сети" Margin="0,0,7,7"/>
               <Button x:Name="BtnVT"       Content="VirusTotal" Margin="0,0,7,7"/>
               <Button x:Name="BtnAsk"      Content="Спросить у ИИ" Margin="0,0,7,7"/>
-              <Button x:Name="BtnCopy"     Content="Копировать" Margin="0,0,7,7"/>
+              <Button x:Name="BtnCopy"     Content="Копировать" Style="{StaticResource Ghost}" Margin="0,0,7,7"/>
               <Button x:Name="BtnInspect"  Content="Разобрать" Margin="0,0,7,7"/>
             </WrapPanel>
 
             <!-- Исправления подбираются под находку и появляются здесь.
                  Пустой раздел не показываем: заголовок без кнопок —
                  обещание, которого программа не выполняет. -->
-            <TextBlock x:Name="FixHead" Text="ЧТО ИСПРАВИТЬ" Style="{StaticResource Sub}" FontSize="10.5"
-                       FontWeight="SemiBold" Margin="0,8,0,9" Visibility="Collapsed"/>
+            <TextBlock x:Name="FixHead" Text="ЧТО ИСПРАВИТЬ" Style="{StaticResource GroupLabel}" Foreground="{StaticResource Ok}"
+                       Margin="0,10,0,10" Visibility="Collapsed"/>
             <WrapPanel x:Name="FixPanel"/>
 
-            <TextBlock Text="НЕОБРАТИМОЕ" Style="{StaticResource Sub}" FontSize="10.5" FontWeight="SemiBold" Margin="0,8,0,9"/>
+            <TextBlock Text="НЕОБРАТИМОЕ" Style="{StaticResource GroupLabel}" Foreground="{StaticResource Crit}" Margin="0,10,0,10"/>
             <WrapPanel>
               <Button x:Name="BtnKill"  Content="Завершить процесс" Margin="0,0,7,7"/>
               <Button x:Name="BtnQuar"  Content="В карантин" Margin="0,0,7,7"/>
@@ -803,7 +955,7 @@ $script:CgMainXaml = @'
             </WrapPanel>
           </StackPanel>
 
-          <Border Margin="20,14,20,20">
+          <Border Margin="24,14,24,22">
             <TextBox x:Name="DetailBox" Style="{StaticResource Mono}" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
           </Border>
         </DockPanel>
@@ -811,10 +963,10 @@ $script:CgMainXaml = @'
     </Grid>
 
     <!-- ===================== СТРОКА СОСТОЯНИЯ ===================== -->
-    <Border Grid.Row="2" Background="#0A0C0F" BorderBrush="#20242C" BorderThickness="0,1,0,0" Padding="18,8">
+    <Border Grid.Row="2" Background="{StaticResource NavBg}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="16,6">
       <Grid>
-        <TextBlock x:Name="StatusText" Text="Готов" Style="{StaticResource Sub}" VerticalAlignment="Center"/>
-        <ProgressBar x:Name="Progress" Width="190" Height="4" HorizontalAlignment="Right"
+        <TextBlock x:Name="StatusText" Text="Готов" Style="{StaticResource Stat}"/>
+        <ProgressBar x:Name="Progress" Width="190" Height="2" HorizontalAlignment="Right"
                      Visibility="Collapsed" IsIndeterminate="True"/>
       </Grid>
     </Border>
