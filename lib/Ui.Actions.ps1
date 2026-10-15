@@ -102,10 +102,18 @@ function Invoke-CgTrustRow {
 
     $path = Get-CgRowPath $Row
     if ($path -and (Test-Path -LiteralPath $path -PathType Leaf)) {
-        $opts = Get-CgTrustOptions $path (Get-CgRowHash $Row)
+        # Родитель есть только у строки процесса. Для файла на диске его
+        # неоткуда взять — и тогда область «родитель» просто не предлагается.
+        $parentPath = ''
+        $parentName = ''
+        if ($Row.PSObject.Properties['ParentPath']) { $parentPath = [string]$Row.ParentPath }
+        if ($Row.PSObject.Properties['ParentName']) { $parentName = [string]$Row.ParentName }
+
+        $opts = Get-CgTrustOptions $path (Get-CgRowHash $Row) $parentPath $parentName
         $res = Show-CgTrustDialog -Subject $path -Options $opts
         if (-not $res) { return $null }
-        return (Add-CgTrust -Type 'file' -Path $path -Hash (Get-CgRowHash $Row) -Scope $res.Scope -Note $res.Note)
+        return (Add-CgTrust -Type 'file' -Path $path -Hash (Get-CgRowHash $Row) -Scope $res.Scope -Note $res.Note `
+                    -ParentPath $parentPath -ParentName $parentName)
     }
 
     # ни файла, ни расширения: доверяем самой находке

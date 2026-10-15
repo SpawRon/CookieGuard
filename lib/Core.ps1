@@ -305,7 +305,13 @@ function Get-CgProcessTable {
         $p = $cim[$procId]
         $path = $p.ExecutablePath
         $parent = $null
-        if ($cim.ContainsKey([int]$p.ParentProcessId)) { $parent = $cim[[int]$p.ParentProcessId].Name }
+        $parentPath = ''
+        if ($cim.ContainsKey([int]$p.ParentProcessId)) {
+            $parent = $cim[[int]$p.ParentProcessId].Name
+            # Путь родителя нужен доверию: подпись родителя переживает
+            # его обновление, а имя процесса подделывается тривиально.
+            $parentPath = "$($cim[[int]$p.ParentProcessId].ExecutablePath)"
+        }
         $created = $null
         try { $created = $p.CreationDate } catch { }
 
@@ -316,6 +322,7 @@ function Get-CgProcessTable {
             CommandLine = $p.CommandLine
             ParentId    = [int]$p.ParentProcessId
             ParentName  = $parent
+            ParentPath  = $parentPath
             User        = $owners[$procId]
             Started     = $created
             Risk        = 0

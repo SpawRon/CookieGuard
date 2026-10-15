@@ -106,7 +106,7 @@ function Show-CgDialog {
         $w.FindName('DlgSubjectBox').Visibility = 'Visible'
     }
 
-    $result = -1
+    $res = @{ V = -1 }
     $panel = $w.FindName('DlgButtons')
 
     # Главная кнопка идёт первой слева — так расставляет кнопки
@@ -125,16 +125,15 @@ function Show-CgDialog {
         }
         if ($i -eq $Buttons.Count - 1 -and $Buttons.Count -gt 1) { $b.IsCancel = $true }
         $idx = $i
-        $b.Add_Click({ $script:CgDlgResult = $idx; $w.Close() }.GetNewClosure())
+        $b.Add_Click({ $res.V = $idx; $w.Close() }.GetNewClosure())
         $panel.Children.Insert(0, $b)
     }
 
-    $script:CgDlgResult = -1
     $w.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Escape') { $w.Close() } }.GetNewClosure())
     if ($script:CgDialogOwner -and $script:CgDialogOwner.IsVisible) { $w.Owner = $script:CgDialogOwner }
     else { $w.WindowStartupLocation = 'CenterScreen' }
     $null = $w.ShowDialog()
-    return $script:CgDlgResult
+    return $res.V
 }
 
 # Короткая обёртка для «да/нет». Возвращает $true, только если
@@ -221,19 +220,19 @@ function Show-CgPrompt {
         $inp.Text = $Default
     }
 
-    $script:CgPromptResult = $null
+    $res = @{ V = $null }
     $w.FindName('PrOk').Add_Click({
-        if ($Password) { $script:CgPromptResult = $pass.Password } else { $script:CgPromptResult = $inp.Text }
+        if ($Password) { $res.V = $pass.Password } else { $res.V = $inp.Text }
         $w.Close()
     }.GetNewClosure())
-    $w.FindName('PrCancel').Add_Click({ $script:CgPromptResult = $null; $w.Close() }.GetNewClosure())
-    $w.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Escape') { $script:CgPromptResult = $null; $w.Close() } }.GetNewClosure())
+    $w.FindName('PrCancel').Add_Click({ $res.V = $null; $w.Close() }.GetNewClosure())
+    $w.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Escape') { $res.V = $null; $w.Close() } }.GetNewClosure())
     $w.Add_ContentRendered({ if ($Password) { $pass.Focus() } else { $inp.Focus(); $inp.SelectAll() } }.GetNewClosure())
 
     if ($script:CgDialogOwner -and $script:CgDialogOwner.IsVisible) { $w.Owner = $script:CgDialogOwner }
     else { $w.WindowStartupLocation = 'CenterScreen' }
     $null = $w.ShowDialog()
-    return $script:CgPromptResult
+    return $res.V
 }
 
 # ------------------------------------------------------------
@@ -352,21 +351,21 @@ function Show-CgTrustDialog {
     }
     if ($radios.Count) { $radios[0].IsChecked = $true }
 
-    $script:CgTrustResult = $null
+    $res = @{ V = $null }
     $w.FindName('TrOk').Add_Click({
         $sel = @($radios | Where-Object { $_.IsChecked })
         if (-not $sel.Count) { return }
-        $script:CgTrustResult = [PSCustomObject]@{
+        $res.V = [PSCustomObject]@{
             Scope = [string]$sel[0].Tag
             Note  = [string]$w.FindName('TrNote').Text
         }
         $w.Close()
     }.GetNewClosure())
-    $w.FindName('TrCancel').Add_Click({ $script:CgTrustResult = $null; $w.Close() }.GetNewClosure())
-    $w.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Escape') { $script:CgTrustResult = $null; $w.Close() } }.GetNewClosure())
+    $w.FindName('TrCancel').Add_Click({ $res.V = $null; $w.Close() }.GetNewClosure())
+    $w.Add_KeyDown({ param($s, $e) if ($e.Key -eq 'Escape') { $res.V = $null; $w.Close() } }.GetNewClosure())
 
     if ($script:CgDialogOwner -and $script:CgDialogOwner.IsVisible) { $w.Owner = $script:CgDialogOwner }
     else { $w.WindowStartupLocation = 'CenterScreen' }
     $null = $w.ShowDialog()
-    return $script:CgTrustResult
+    return $res.V
 }

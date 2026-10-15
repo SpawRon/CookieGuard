@@ -21,10 +21,13 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 . (Join-Path $PSScriptRoot 'lib\Archive.ps1')
 . (Join-Path $PSScriptRoot 'lib\Diagnose.ps1')
 . (Join-Path $PSScriptRoot 'lib\Update.ps1')
+. (Join-Path $PSScriptRoot 'lib\Remedy.ps1')
+. (Join-Path $PSScriptRoot 'lib\Inspect.ps1')
 . (Join-Path $PSScriptRoot 'lib\Ui.Theme.ps1')
 . (Join-Path $PSScriptRoot 'lib\Ui.Dialogs.ps1')
 . (Join-Path $PSScriptRoot 'lib\Ui.Actions.ps1')
 . (Join-Path $PSScriptRoot 'lib\Ui.MainXaml.ps1')
+. (Join-Path $PSScriptRoot 'lib\Ui.Inspector.ps1')
 . (Join-Path $PSScriptRoot 'lib\Ui.ScanBox.ps1')
 
 $ErrorActionPreference = 'Continue'
@@ -57,7 +60,12 @@ foreach ($n in @('ChipAdmin','ChipAudit','ChipMon','BtnScan','BtnMon','Cards','B
                  'TitleBar','BtnMinW','BtnMaxW','BtnCloseW','Nav','BtnScanFiles','BtnScanFiles2',
                  'TglAudit','TglGuard','AuditSub',
                  'Inspector','InspKind','InspTitle','BtnInspClose','BtnDiag',
-                 'UpdStats','BtnUpdCheck','BtnUpdInstall','BtnUpdToken')) {
+                 'UpdStats','BtnUpdCheck','BtnUpdInstall','BtnUpdToken',
+                 'BtnInspect','FixHead','FixPanel',
+                 'NavCol','BtnNavToggle','NavActions','NavActionsMini',
+                 'BtnScanMini','BtnScanFilesMini','BtnMonMini','NavHeadWatch','NavHeadAnalyse',
+                 'SearchBox','SearchHint','SearchPop','SearchList',
+                 'TabFindBad','TabFindCrit','TabFindWarn','TabFindAll')) {
     $ui[$n] = $win.FindName($n)
 }
 
@@ -234,6 +242,91 @@ function Show-Detail {
     $ui.BtnKill.IsEnabled     = ($procId -gt 0)
     $ui.BtnQuar.IsEnabled     = [bool]$isFile
     $ui.BtnNeutr.IsEnabled    = (($procId -gt 0) -or $isFile)
+
+    Update-FixButtons $Item
+}
+
+# ------------------------------------------------------------
+#  «Что исправить» — кнопки под конкретную находку
+#
+#  Набор действий зависит от того, чем находка является:
+#  ключ реестра чинится не так, как запись автозапуска, и уж
+#  точно не так, как папка расширения. Поэтому кнопки не
+#  прибиты к разметке, а собираются под выбранную строку.
+# ------------------------------------------------------------
+function Update-FixButtons {
+    param($Item)
+
+    $ui.FixPanel.Children.Clear()
+    $fixers = @()
+    if ($Item) { $fixers = @(Get-CgFixers $Item) }
+
+    if (-not $fixers.Count) {
+        $ui.FixHead.Visibility = 'Collapsed'
+        return
+    }
+    $ui.FixHead.Visibility = 'Visible'
+
+    foreach ($fx in $fixers) {
+        $b = New-Object System.Windows.Controls.Button
+        $b.Content = $fx.Button
+        $b.Margin  = '0,0,7,7'
+        $b.ToolTip = ($fx.Title + "`n`n" + $fx.Explain)
+        if ($fx.Risky) { $b.Style = $win.FindResource('Danger') } else { $b.Style = $win.FindResource('Primary') }
+        $theItem = $Item
+        $theFix  = $fx
+        $b.Add_Click({ Invoke-FixFromUi $theItem $theFix }.GetNewClosure())
+        $null = $ui.FixPanel.Children.Add($b)
+    }
+}
+
+# Показать план, спросить, выполнить. Именно в этом порядке:
+# инструмент безопасности не правит реестр молча.
+function Invoke-FixFromUi {
+    param($Finding, $Fixer)
+
+    $plan = @(Get-CgFixPlan $Finding $Fixer)
+    if (-not $plan.Count) {
+        $null = Show-CgDialog -Title 'Нечего исправлять' -Text 'Похоже, это уже исправлено.' -Kind 'ok'
+        Update-FixButtons $Finding
+        return
+    }
+
+    $lines = @()
+    foreach ($s in $plan) {
+        $t = "$($s.Text)"
+        if ($s.Target) { $t += ": $($s.Target)" }
+        if ($s.From -or $s.To) { $t += "   $($s.From) -> $($s.To)" }
+        $lines += $t
+    }
+    $shown = @($lines | Select-Object -First 14)
+    $subject = ($shown -join "`n")
+    if ($lines.Count -gt $shown.Count) { $subject += "`n… и ещё $($lines.Count - $shown.Count)" }
+
+    $kind = 'question'
+    if ($Fixer.Risky) { $kind = 'warn' }
+    if (-not (Confirm-CgDialog -Title $Fixer.Title -Text $Fixer.Explain -Subject $subject `
+                -Kind $kind -Yes $Fixer.Button -Dangerous:([bool]$Fixer.Risky))) {
+        Set-Status 'Исправление отменено'
+        return
+    }
+
+    Set-Busy $true 'Исправляю...'
+    $res = Invoke-CgFix $Finding $Fixer
+    Set-Busy $false
+
+    if (-not $res.Ok) {
+        $null = Show-CgDialog -Title 'Не исправлено' -Text $res.Message -Kind 'danger'
+        Set-Status 'Исправить не удалось'
+        return
+    }
+
+    $txt = "$($res.Message)"
+    if ($res.Undo) { $txt += "`n`nЭто обратимо: запись отката $($res.Undo.Id) лежит в папке undo рядом с журналами." }
+    $null = Show-CgDialog -Title 'Исправлено' -Text $txt -Kind 'ok'
+    Set-Status "$($res.Message)"
+    Update-FixButtons $Finding
+    Update-Cards
 }
 
 function Get-SelPath {
@@ -779,7 +872,12 @@ function Start-Scan {
 
 function Show-Findings {
     $src = $app.Findings
-    if ($ui.ChkOnlyBad.IsChecked) { $src = $src | Where-Object { $_.Severity -in @('CRIT', 'WARN', 'NOTE') } }
+    # Галочка умела два состояния, а нужны четыре: после проверки
+    # первый вопрос — «покажи только критичное», и ответом на него
+    # галочка быть не может.
+    if ($ui.TabFindCrit.IsChecked)     { $src = $src | Where-Object { $_.Severity -eq 'CRIT' } }
+    elseif ($ui.TabFindWarn.IsChecked) { $src = $src | Where-Object { $_.Severity -eq 'WARN' } }
+    elseif ($ui.TabFindBad.IsChecked)  { $src = $src | Where-Object { $_.Severity -in @('CRIT', 'WARN', 'NOTE') } }
     $ui.GridFind.ItemsSource = @($src | Sort-Object Order, Area, Title)
     $c = @($app.Findings | Where-Object { $_.Severity -eq 'CRIT' }).Count
     $w = @($app.Findings | Where-Object { $_.Severity -eq 'WARN' }).Count
@@ -790,6 +888,9 @@ function Show-Findings {
 $ui.BtnScan.Add_Click({ Start-Scan })
 $ui.BtnScan2.Add_Click({ Start-Scan })
 $ui.ChkOnlyBad.Add_Click({ Show-Findings })
+foreach ($tb in @($ui.TabFindBad, $ui.TabFindCrit, $ui.TabFindWarn, $ui.TabFindAll)) {
+    $tb.Add_Click({ Show-Findings })
+}
 
 $ui.BtnSaveReport.Add_Click({
     if (-not $app.Findings -or -not $app.Findings.Count) { Set-Status 'Сначала выполните проверку'; return }
@@ -1118,6 +1219,7 @@ function Show-CgDiagnosis {
     # запускают. С фильтром «только важное» человек попадал бы на
     # пустой список и решал, что проверка опять ничего не сделала.
     $ui.ChkOnlyBad.IsChecked = $false
+    $ui.TabFindAll.IsChecked = $true
     Show-Findings
     Show-CgPage 'find'
 
@@ -1373,7 +1475,197 @@ $ui.Nav.Add_SelectionChanged({
 $ui.Nav.SelectedIndex = 0
 $ui.Tabs.SelectedIndex = 0
 
+# ------------------------------------------------------------
+#  Свёрнутый столбец разделов
+#
+#  Окно на одиннадцать разделов большую часть времени показывает
+#  таблицу, которой ширины не хватает. Свёрнутый столбец отдаёт
+#  194 точки таблице и оставляет значки — так сделано и в
+#  «Параметрах», и в тех программах, у которых разделов много.
+# ------------------------------------------------------------
+$script:CgNavLabels = @()
+foreach ($it in $ui.Nav.Items) {
+    if (-not ($it -is [System.Windows.Controls.ListBoxItem])) { continue }
+    $c = $it.Content
+    if (-not ($c -is [System.Windows.Controls.StackPanel])) { continue }
+    foreach ($ch in $c.Children) {
+        if ($ch -is [System.Windows.Controls.TextBlock] -and "$($ch.Tag)" -eq 'navlabel') {
+            $script:CgNavLabels += $ch
+        }
+    }
+}
+$script:CgNavCollapsed = $false
+
+function Set-CgNavCollapsed {
+    param([bool]$On)
+    $script:CgNavCollapsed = $On
+    $lbl = 'Visible'
+    $mini = 'Collapsed'
+    if ($On) { $lbl = 'Collapsed'; $mini = 'Visible' }
+
+    foreach ($t in $script:CgNavLabels) { $t.Visibility = $lbl }
+    $ui.NavActions.Visibility     = $lbl
+    $ui.NavActionsMini.Visibility = $mini
+    $ui.NavHeadWatch.Visibility   = $lbl
+    $ui.NavHeadAnalyse.Visibility = $lbl
+
+    $w = 252
+    if ($On) { $w = 58 }
+    $ui.NavCol.Width = New-Object System.Windows.GridLength $w
+
+    if ($On) { $ui.BtnNavToggle.ToolTip = 'Развернуть столбец разделов' }
+    else     { $ui.BtnNavToggle.ToolTip = 'Свернуть столбец разделов' }
+}
+
+$ui.BtnNavToggle.Add_Click({ Set-CgNavCollapsed (-not $script:CgNavCollapsed) })
+$ui.BtnScanMini.Add_Click({ Invoke-CgButton $ui.BtnScan })
+$ui.BtnScanFilesMini.Add_Click({ Invoke-CgButton $ui.BtnScanFiles })
+$ui.BtnMonMini.Add_Click({ Invoke-CgButton $ui.BtnMon })
+
+# ------------------------------------------------------------
+#  Поиск по окну
+#
+#  Ищет и разделы, и уже собранные строки: после проверки на
+#  двести находок «где я видел это имя» — вопрос чаще, чем
+#  «в каком разделе смотреть».
+# ------------------------------------------------------------
+$script:CgSearchPages = @(
+    @{ Key = 'over';  Name = 'Обзор' },      @{ Key = 'guard'; Name = 'Защита' },
+    @{ Key = 'mon';   Name = 'Монитор' },    @{ Key = 'find';  Name = 'Находки' },
+    @{ Key = 'proc';  Name = 'Процессы' },   @{ Key = 'ext';   Name = 'Расширения' },
+    @{ Key = 'auto';  Name = 'Автозапуск' }, @{ Key = 'run';   Name = 'Запуски' },
+    @{ Key = 'quar';  Name = 'Карантин' },   @{ Key = 'trust'; Name = 'Доверенные' },
+    @{ Key = 'log';   Name = 'Журнал' }
+)
+
+function Get-CgGridFor {
+    param([string]$Key)
+    switch ($Key) {
+        'find'  { return $ui.GridFind }
+        'proc'  { return $ui.GridProc }
+        'ext'   { return $ui.GridExt }
+        'auto'  { return $ui.GridAuto }
+        'run'   { return $ui.GridRun }
+        'quar'  { return $ui.GridQuar }
+        'trust' { return $ui.GridTrust }
+        'mon'   { return $ui.GridMon }
+    }
+    return $null
+}
+
+function Add-CgSearchResult {
+    param([string]$Title, [string]$Sub, [string]$Page, $Row)
+    $li = New-Object System.Windows.Controls.ListBoxItem
+    $li.Padding = '9,6'
+    $sp = New-Object System.Windows.Controls.StackPanel
+    $t1 = New-Object System.Windows.Controls.TextBlock
+    $t1.Text = $Title
+    $t1.TextTrimming = 'CharacterEllipsis'
+    $t2 = New-Object System.Windows.Controls.TextBlock
+    $t2.Text = $Sub
+    $t2.FontSize = 11
+    $t2.Margin = '0,2,0,0'
+    $t2.TextTrimming = 'CharacterEllipsis'
+    $t2.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#7C8694'))
+    $null = $sp.Children.Add($t1)
+    $null = $sp.Children.Add($t2)
+    $li.Content = $sp
+    $li.Tag = [PSCustomObject]@{ Page = $Page; Row = $Row }
+    $null = $ui.SearchList.Items.Add($li)
+}
+
+function Update-CgSearch {
+    $q = "$($ui.SearchBox.Text)".Trim()
+    if ($q) { $ui.SearchHint.Visibility = 'Collapsed' } else { $ui.SearchHint.Visibility = 'Visible' }
+
+    $ui.SearchList.Items.Clear()
+    if ($q.Length -lt 2) { $ui.SearchPop.IsOpen = $false; return }
+
+    foreach ($pg in $script:CgSearchPages) {
+        if ($pg.Name -like "*$q*") { Add-CgSearchResult $pg.Name 'раздел окна' $pg.Key $null }
+    }
+
+    $sets = @(
+        @{ Key = 'find';  Label = 'находка';    Items = $app.Findings },
+        @{ Key = 'proc';  Label = 'процесс';    Items = $app.Procs },
+        @{ Key = 'ext';   Label = 'расширение'; Items = $app.Exts },
+        @{ Key = 'auto';  Label = 'автозапуск'; Items = $app.Autoruns },
+        @{ Key = 'run';   Label = 'запуск';     Items = $app.Runs },
+        @{ Key = 'quar';  Label = 'карантин';   Items = $app.Quar },
+        @{ Key = 'trust'; Label = 'доверенное'; Items = $app.Trust }
+    )
+    $n = 0
+    foreach ($st in $sets) {
+        foreach ($r in @($st.Items)) {
+            if ($n -ge 40) { break }
+            $title = ''
+            if ($r.PSObject.Properties['Title'] -and $r.Title) { $title = [string]$r.Title }
+            elseif ($r.PSObject.Properties['Name']) { $title = [string]$r.Name }
+            $path = ''
+            if ($r.PSObject.Properties['Path']) { $path = [string]$r.Path }
+            if (($title -notlike "*$q*") -and ($path -notlike "*$q*")) { continue }
+            $sub = "$($st.Label)"
+            if ($path) { $sub = "$($st.Label) — $path" }
+            Add-CgSearchResult $title $sub $st.Key $r
+            $n++
+        }
+    }
+
+    if (-not $ui.SearchList.Items.Count) {
+        Add-CgSearchResult 'Ничего не найдено' 'Ищем по разделам и по уже собранным таблицам' '' $null
+    }
+    $ui.SearchPop.IsOpen = $true
+}
+
+function Invoke-CgSearchPick {
+    param($Item)
+    if (-not $Item -or -not $Item.Tag) { return }
+    $d = $Item.Tag
+    if (-not $d.Page) { return }
+    $ui.SearchPop.IsOpen = $false
+    Show-CgPage $d.Page
+    if ($d.Row) {
+        $g = Get-CgGridFor $d.Page
+        if ($g) {
+            $g.SelectedItem = $d.Row
+            try { $g.ScrollIntoView($d.Row) } catch { }
+        }
+        Show-Detail $d.Row
+    }
+}
+
+$ui.SearchBox.Add_TextChanged({ Update-CgSearch })
+$ui.SearchBox.Add_KeyDown({
+    param($s, $e)
+    if ($e.Key -eq 'Escape') {
+        $ui.SearchBox.Text = ''
+        $ui.SearchPop.IsOpen = $false
+        return
+    }
+    if ($e.Key -eq 'Return' -and $ui.SearchList.Items.Count) {
+        Invoke-CgSearchPick $ui.SearchList.Items[0]
+        $e.Handled = $true
+    }
+})
+$ui.SearchList.Add_SelectionChanged({
+    $sel = $ui.SearchList.SelectedItem
+    if ($sel) {
+        $ui.SearchList.SelectedIndex = -1
+        Invoke-CgSearchPick $sel
+    }
+})
+
 $ui.BtnInspClose.Add_Click({ $ui.Inspector.Visibility = 'Collapsed' })
+
+# Разбор: показать, из чего состоит находка и что с ней связано.
+$ui.BtnInspect.Add_Click({
+    if (-not $app.Selected) { Set-Status 'Сначала выберите строку'; return }
+    Set-Busy $true 'Собираю карту...'
+    try { Show-CgInspector $win $app.Selected } catch {
+        $null = Show-CgDialog -Title 'Разбор не собрался' -Text "$($_.Exception.Message)" -Kind 'danger'
+    } finally { Set-Busy $false }
+    Set-Status 'Готов'
+})
 $ui.BtnDiag.Add_Click({ Show-CgDiagnosis })
 
 # ------------------------------------------------------------

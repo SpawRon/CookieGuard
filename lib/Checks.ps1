@@ -9,7 +9,8 @@ $ErrorActionPreference = 'SilentlyContinue'
 function New-CgFinding {
     param(
         [string]$Severity, [string]$Area, [string]$Title,
-        [string]$Detail = '', [string]$Path = '', [string]$Hash = '', [string]$Query = ''
+        [string]$Detail = '', [string]$Path = '', [string]$Hash = '', [string]$Query = '',
+        $Target = $null
     )
     $ord = @{ 'CRIT' = 0; 'WARN' = 1; 'NOTE' = 2; 'INFO' = 3; 'OK' = 4 }[$Severity]
     if ($null -eq $ord) { $ord = 5 }
@@ -17,26 +18,73 @@ function New-CgFinding {
     return [PSCustomObject]@{
         Severity = $Severity; Order = $ord; Area = $Area; Title = $Title
         Detail = $Detail; Path = $Path; Hash = $Hash; Query = $Query
+        # Target — на что именно указывает находка: ключ реестра, папка,
+        # запись автозапуска. Текст Detail написан для человека и может
+        # поменяться в любой правке; чинить и разбирать нужно по объекту.
+        Target = $Target
     }
 }
 
 # ------------------------------------------------------------
 # 1. Защита Windows
 # ------------------------------------------------------------
+# Сторонние антивирусы регистрируются в SecurityCenter2. Если такой есть
+# и он работает, Windows штатно отключает Defender — это не брешь. Без
+# этой проверки окно показывало «защита ВЫКЛЮЧЕНА» на машине под ESET,
+# и человек шёл искать проблему, которой нет.
+function Get-CgOtherAntivirus {
+    $out = @()
+    try {
+        foreach ($a in @(Get-CimInstance -Namespace root\SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction Stop)) {
+            $name = "$($a.displayName)"
+            if ($name -match '(?i)windows\s+defender') { continue }
+            # productState — три байта: тип, состояние защиты, состояние баз
+            $hex = '{0:X6}' -f [int]$a.productState
+            $rtp = [Convert]::ToInt32($hex.Substring(2, 2), 16)
+            $def = [Convert]::ToInt32($hex.Substring(4, 2), 16)
+            $out += [PSCustomObject]@{ Name = $name; Active = (($rtp -band 0x10) -ne 0); Fresh = ($def -eq 0) }
+        }
+    } catch { }
+    return $out
+}
+
 function Get-CgDefenderFindings {
     $f = @()
+    $other  = @(Get-CgOtherAntivirus)
+    $guards = @($other | Where-Object { $_.Active })
+
+    # Установлен, зарегистрирован — и не защищает. Вот это настоящая беда:
+    # Defender уступил место тому, кто не работает.
+    foreach ($a in @($other | Where-Object { -not $_.Active })) {
+        $f += New-CgFinding 'WARN' 'Defender' ('Антивирус {0} установлен, но не защищает' -f $a.Name) 'Он зарегистрирован в Windows, но его защита в реальном времени выключена. Включите её или удалите программу.'
+    }
+
     try {
         $st = Get-MpComputerStatus -ErrorAction Stop
+
+        # Defender ушёл в сторону целиком и штатно. Его собственные
+        # показатели — подделка настроек, возраст баз, поведенческий
+        # анализ — в этом состоянии ничего не значат, и сообщать о них
+        # значит пугать человека без причины.
+        $standDown = ((-not $st.RealTimeProtectionEnabled) -and $guards.Count -gt 0)
+
         if ($st.RealTimeProtectionEnabled) { $f += New-CgFinding 'OK' 'Defender' 'Защита в реальном времени включена' }
+        elseif ($standDown) {
+            $f += New-CgFinding 'OK' 'Defender' ('Защиту обеспечивает другой антивирус: {0}' -f (($guards | ForEach-Object { $_.Name }) -join ', ')) 'Windows штатно отключает Defender, когда работает сторонний антивирус.'
+            foreach ($a in @($guards | Where-Object { -not $_.Fresh })) {
+                $f += New-CgFinding 'WARN' 'Defender' ('У антивируса {0} устарели базы' -f $a.Name) 'Обновите его базы — защита есть, но она не знает про новое.'
+            }
+        }
         else { $f += New-CgFinding 'CRIT' 'Defender' 'Защита в реальном времени ВЫКЛЮЧЕНА' 'Основная защита не работает. Включите её в "Безопасность Windows".' }
 
-        if ($st.IsTamperProtected) { $f += New-CgFinding 'OK' 'Defender' 'Защита от подделки настроек включена' }
+        if ($standDown) { } elseif ($st.IsTamperProtected) { $f += New-CgFinding 'OK' 'Defender' 'Защита от подделки настроек включена' }
         else { $f += New-CgFinding 'WARN' 'Defender' 'Защита от подделки настроек выключена' 'Без неё вредонос сможет отключить антивирус сам.' }
 
-        if ($st.AntivirusSignatureAge -gt 3) { $f += New-CgFinding 'WARN' 'Defender' ('Базы не обновлялись {0} дн.' -f $st.AntivirusSignatureAge) }
+        if ($standDown) { }
+        elseif ($st.AntivirusSignatureAge -gt 3) { $f += New-CgFinding 'WARN' 'Defender' ('Базы не обновлялись {0} дн.' -f $st.AntivirusSignatureAge) }
         else { $f += New-CgFinding 'OK' 'Defender' ('Базы свежие ({0} дн.)' -f $st.AntivirusSignatureAge) }
 
-        if (-not $st.BehaviorMonitorEnabled) { $f += New-CgFinding 'WARN' 'Defender' 'Поведенческий анализ выключен' }
+        if (-not $standDown -and -not $st.BehaviorMonitorEnabled) { $f += New-CgFinding 'WARN' 'Defender' 'Поведенческий анализ выключен' }
     } catch {
         $f += New-CgFinding 'NOTE' 'Defender' 'Не удалось опросить Defender' 'Возможно, установлен другой антивирус.'
     }
@@ -160,9 +208,25 @@ function Get-CgAutorunList {
     function Add-Entry {
         param([string]$Source, [string]$Name, [string]$Command, [string]$Kind)
         if (-not $Command) { return }
-        $exe = $Command
-        if ($exe -match '^"([^"]+)"') { $exe = $matches[1] }
-        elseif ($exe -match '^(\S+\.(exe|dll|bat|cmd|vbs|js|ps1|scr))') { $exe = $matches[1] }
+        # Путь без кавычек может содержать пробелы («C:\Program Files\...»),
+        # поэтому «первое слово до пробела» не годится: в $exe попадала вся
+        # командная строка вместе с аргументами, файл «не находился на
+        # диске», а слово hidden из ключа --start-hidden поднимало находку
+        # до CRIT. Берём префикс, который оканчивается на расширение
+        # программы и существует на диске.
+        $exe = $Command.Trim()
+        if ($exe -match '^"([^"]+)"') {
+            $exe = $matches[1]
+        } else {
+            $exp  = [Environment]::ExpandEnvironmentVariables($exe)
+            $cand = ''
+            foreach ($m in [regex]::Matches($exp, '(?i)\.(exe|dll|bat|cmd|vbs|js|ps1|scr|com|msi)(?=\s|$)')) {
+                $c = $exp.Substring(0, $m.Index + $m.Length)
+                if (-not $cand) { $cand = $c }
+                if (Test-Path -LiteralPath $c) { $cand = $c; break }
+            }
+            if ($cand) { $exe = $cand }
+        }
         $exe = Get-CgNormPath ([Environment]::ExpandEnvironmentVariables($exe))
 
         $cls = Get-CgPathClass $exe
@@ -178,8 +242,22 @@ function Get-CgAutorunList {
         }
         if ($sig -and -not $sig.Valid -and $sig.Status -notin @('NotSigned', 'Valid', 'UnknownError', 'Error')) { $sev = 'CRIT'; $notes += "подпись недействительна ($($sig.Status))" }
         if ($Command -match 'powershell|pwsh|mshta|wscript|cscript|rundll32|regsvr32|certutil|bitsadmin') { $sev = 'CRIT'; $notes += 'в автозапуске интерпретатор или системная утилита' }
-        if ($Command -match '-enc\b|-e\s+[A-Za-z0-9+/]{40,}|FromBase64String|DownloadString|hidden') { $sev = 'CRIT'; $notes += 'скрытая или закодированная команда' }
-        if ($exe -and -not (Test-Path -LiteralPath $exe)) { $notes += 'файл не найден на диске' }
+        if ($Command -match '-enc\b|-e\s+[A-Za-z0-9+/]{40,}|FromBase64String|DownloadString') { $sev = 'CRIT'; $notes += 'скрытая или закодированная команда' }
+        elseif ($Command -match '(?i)hidden') {
+            # Скрытое окно само по себе — обычный приём нормальных программ
+            # (--start-hidden у Razer, -silent у Steam). Опасно оно в паре с
+            # интерпретатором, а тот проверен строкой выше.
+            if ($Command -match 'powershell|pwsh|mshta|wscript|cscript|rundll32|regsvr32|certutil|bitsadmin') { $sev = 'CRIT'; $notes += 'скрытый запуск интерпретатора' }
+            else { $notes += 'запускается со скрытым окном' }
+        }
+        if ($exe -and -not (Test-Path -LiteralPath $exe)) {
+            $notes += 'файл не найден на диске'
+            # Запись автозапуска, ведущая в пустоту, — это уже мусор, а
+            # если путь окажется доступен для записи, то и готовая точка
+            # перехвата: кто положит туда файл, тот и получит автозапуск.
+            # Молчать о ней нельзя, но и пугать как вредоносом не за что.
+            if ($sev -eq 'INFO') { $sev = 'WARN' }
+        }
 
         $sigTxt = 'нет данных'
         if ($sig) { $sigTxt = ($sig.Status + ' ' + $sig.Signer).Trim() }
@@ -242,7 +320,16 @@ function Get-CgAutorunFindings {
     if (-not $AutorunList) { $AutorunList = Get-CgAutorunList }
     $f = @()
     foreach ($a in ($AutorunList | Where-Object { $_.Severity -in @('CRIT', 'WARN') })) {
-        $f += New-CgFinding $a.Severity 'Автозапуск' ('[{0}] {1}' -f $a.Kind, $a.Name) $a.Detail $a.Path
+        # Чем запись является, знает только тот, кто её собрал. Запись в
+        # Run и задача планировщика убираются совершенно по-разному.
+        $tg = $null
+        switch ($a.Kind) {
+            'Реестр'             { $tg = [PSCustomObject]@{ Kind = 'runvalue'; Path = $a.Source;  Name = $a.Name; Command = $a.Command; File = $a.Path } }
+            'Папка автозагрузки' { $tg = [PSCustomObject]@{ Kind = 'runfile';  Path = $a.Command; Name = $a.Name; Command = $a.Command; File = $a.Path } }
+            'Задача'             { $tg = [PSCustomObject]@{ Kind = 'task';     Path = $a.Name;    Name = $a.Name; Command = $a.Command; File = $a.Path } }
+            'Служба'             { $tg = [PSCustomObject]@{ Kind = 'service';  Path = $a.Name;    Name = $a.Name; Command = $a.Command; File = $a.Path } }
+        }
+        $f += New-CgFinding $a.Severity 'Автозапуск' ('[{0}] {1}' -f $a.Kind, $a.Name) $a.Detail $a.Path -Target $tg
     }
 
     # Точки закрепления, которыми пользуются почти только вредоносы
@@ -257,17 +344,21 @@ function Get-CgAutorunFindings {
         $v = (Get-ItemProperty -Path $s.Path -Name $s.Name -ErrorAction SilentlyContinue).$($s.Name)
         if (-not $v) { continue }
         if ($s.Default -and ("$v".Trim() -eq $s.Default)) { continue }
-        $f += New-CgFinding 'CRIT' 'Автозапуск' ('{0} изменён' -f $s.Name) ("Ключ: $($s.Path)`nЗначение: $v`n`n$($s.Why)")
+        $f += New-CgFinding 'CRIT' 'Автозапуск' ('{0} изменён' -f $s.Name) ("Ключ: $($s.Path)`nЗначение: $v`n`n$($s.Why)") `
+            -Target ([PSCustomObject]@{ Kind = 'regvalue'; Path = $s.Path; Name = $s.Name; Was = "$v"; Restore = $s.Default })
     }
 
     $ifeo = 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Image File Execution Options'
     foreach ($sub in (Get-ChildItem -Path $ifeo -ErrorAction SilentlyContinue)) {
         $dbg = (Get-ItemProperty -Path $sub.PSPath -Name 'Debugger' -ErrorAction SilentlyContinue).Debugger
         if (-not $dbg) { continue }
+        $ifeoTarget = [PSCustomObject]@{
+            Kind = 'regvalue'; Path = "$ifeo\$($sub.PSChildName)"; Name = 'Debugger'; Was = "$dbg"; Program = $sub.PSChildName
+        }
         if ($dbg -match 'systray\.exe\s*$') {
-            $f += New-CgFinding 'WARN' 'Автозапуск' ('Запуск программы заблокирован: {0}' -f $sub.PSChildName) ("Подставлено: $dbg`n`nsystray.exe — пустышка Windows. Так программы отключают утилиты для урезания телеметрии.`nЕсли вы такую ставили — это она. Если нет — разберитесь.")
+            $f += New-CgFinding 'WARN' 'Автозапуск' ('Запуск программы заблокирован: {0}' -f $sub.PSChildName) ("Подставлено: $dbg`n`nsystray.exe — пустышка Windows. Так программы отключают утилиты для урезания телеметрии.`nЕсли вы такую ставили — это она. Если нет — разберитесь.") -Target $ifeoTarget
         } else {
-            $f += New-CgFinding 'CRIT' 'Автозапуск' ('Подменён запуск программы: {0}' -f $sub.PSChildName) ("Вместо неё запускается: $dbg`n`nТак блокируют антивирусы и перехватывают запуск программ.")
+            $f += New-CgFinding 'CRIT' 'Автозапуск' ('Подменён запуск программы: {0}' -f $sub.PSChildName) ("Вместо неё запускается: $dbg`n`nТак блокируют антивирусы и перехватывают запуск программ.") -Target $ifeoTarget
         }
     }
 
@@ -314,7 +405,7 @@ function Get-CgProcessList {
         if ($p.Path -and (Get-Command Test-CgTrustedFile -ErrorAction SilentlyContinue)) {
             # одна проверка на все области доверия: отпечаток, путь,
             # папка, «эта программа» и «этот издатель»
-            $trusted = Test-CgTrustedFile $p.Path
+            $trusted = Test-CgTrustedFile $p.Path '' $p.ParentPath $p.ParentName
         }
         if ($trusted) {
             $lvl = 'OK'
@@ -323,7 +414,7 @@ function Get-CgProcessList {
         $out += [PSCustomObject]@{
             Severity = $lvl; Order = @{ 'CRIT' = 0; 'WARN' = 1; 'NOTE' = 2; 'OK' = 3 }[$lvl]
             Name = $p.Name; Id = $p.Id; Risk = $p.Risk; User = $p.User
-            Path = $p.Path; ParentName = $p.ParentName; ParentId = $p.ParentId
+            Path = $p.Path; ParentName = $p.ParentName; ParentId = $p.ParentId; ParentPath = $p.ParentPath
             CommandLine = $p.CommandLine; Signature = $sigTxt
             Notes = ($p.Reasons -join '; ')
             Title = $p.Name; Hash = ''; Query = $p.Name
@@ -511,6 +602,23 @@ function Get-CgCopyFindings {
 
             $isOwnStore = ($fl -match '\\(network|electron|cef|default)\\cookies$' -or $fl -match '\\qtwebengine\\') -and
                           ($fl -match '\\appdata\\(roaming|local)\\')
+            # Программы на Electron кладут Cookies и прямо в корень своей
+            # папки в AppData, без подпапки Network — так делают сборки на
+            # старом Chromium. Отличить такую папку от подброшенной копии
+            # можно по соседям: GPUCache, Local Storage, blob_storage и
+            # прочее создаёт только сам движок, и рядом с украденным
+            # файлом этого не будет.
+            if (-not $isOwnStore -and $fl -match '\\appdata\\(roaming|local)\\') {
+                $dir = Split-Path -Parent $file.FullName
+                $marks = 0
+                foreach ($s in @('Local Storage', 'GPUCache', 'blob_storage', 'Code Cache',
+                                 'Session Storage', 'IndexedDB', 'Network Persistent State',
+                                 'Service Worker', 'Preferences')) {
+                    if (Test-Path -LiteralPath (Join-Path $dir $s)) { $marks++ }
+                }
+                if ($marks -ge 2) { $isOwnStore = $true }
+            }
+
             if ($isOwnStore) {
                 $ownStores++
                 $app = ($file.FullName -replace '(?i)^.*\\AppData\\(Roaming|Local)\\', '' -split '\\')[0]
@@ -985,7 +1093,9 @@ function Get-CgAdobeFindings {
             $dbg = $true
             $f += New-CgFinding 'CRIT' 'Adobe' ('Разрешена загрузка неподписанных расширений ({0})' -f $k.PSChildName) (
                 "Ключ: $($k.PSPath)`nЗначение PlayerDebugMode = 1`n`nAdobe обычно грузит только подписанные расширения. Этот режим снимает проверку —`nего включают разработчики, а ещё его включают установщики пиратских плагинов,`nчтобы протащить своё. Если вы не пишете расширения сами — выключите."
-            )
+            ) -Target ([PSCustomObject]@{
+                Kind = 'regvalue'; Path = "HKCU:\Software\Adobe\$($k.PSChildName)"; Name = 'PlayerDebugMode'; Was = '1'; Restore = '0'
+            })
         }
     }
     if (-not $dbg) { $f += New-CgFinding 'OK' 'Adobe' 'Загрузка неподписанных расширений выключена' }
@@ -1104,7 +1214,10 @@ function Get-CgAdobeFindings {
                 $det += "`n`nЧто делать: вспомните, ставили ли вы такую панель. Если нет — выключите PlayerDebugMode (находка выше), и расширение перестанет загружаться; саму папку можно убрать в карантин."
             }
 
-            $f += New-CgFinding $sev 'Adobe' ('Расширение Adobe: {0}' -f $bundleName) $det $d.FullName '' $bundleName
+            # Папка расширения целиком — это и есть «со всеми ветками»:
+            # манифест, скрипты, ресурсы. Исправлению нужен именно каталог.
+            $f += New-CgFinding $sev 'Adobe' ('Расширение Adobe: {0}' -f $bundleName) $det $d.FullName '' $bundleName `
+                -Target ([PSCustomObject]@{ Kind = 'folder'; Path = $d.FullName; Name = $bundleName; Signed = $signed })
         }
     }
     if (-not $extN) { $f += New-CgFinding 'OK' 'Adobe' 'Расширений Adobe в пользовательских папках нет' }

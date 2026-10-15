@@ -123,11 +123,78 @@ function ConvertTo-CgTrustEntry {
         Folder = $folder
         Name   = $name
         Signer = $signer
+        # область «родитель»: чем опознан родитель и чем именно
+        ParentKind  = "$($Raw.ParentKind)"
+        ParentKey   = "$($Raw.ParentKey)"
+        ParentLabel = "$($Raw.ParentLabel)"
+        Pattern     = "$($Raw.Pattern)"
         Label  = "$($Raw.Label)"
         Note   = "$($Raw.Note)"
         Added  = "$($Raw.Added)"
     }
 }
+
+# ------------------------------------------------------------
+#  Путь, переживающий обновление
+#
+#  claude.exe лежит по пути ...\claude-code\2.1.288\36aa8c97bf86\claude.exe:
+#  в нём и номер версии, и случайная папка сборки. Завтра это другой
+#  путь, а программа та же. Доверие «только этот файл» на таком пути
+#  живёт до первого обновления — то есть бесполезно. Заменяем
+#  версионные куски звёздочкой, имя файла оставляем как есть.
+# ------------------------------------------------------------
+function Get-CgPathPattern {
+    param([string]$Path)
+    $np = Get-CgNormPath $Path
+    if (-not $np) { return '' }
+    $parts = $np -split '\\'
+    $res = @()
+    for ($i = 0; $i -lt $parts.Count; $i++) {
+        $s = $parts[$i]
+        if ($i -eq $parts.Count - 1) { $res += $s; continue }
+        if ($s -match '^\d+(\.\d+)+$')        { $res += '*'; continue }   # 2.1.288
+        if ($s -match '^[0-9a-fA-F]{8,}$')    { $res += '*'; continue }   # 36aa8c97bf86
+        if ($s -match '\d+\.\d+\.\d+')        { $res += '*'; continue }   # Claude_2.19675.1.0_x64__...
+        $res += $s
+    }
+    return ($res -join '\')
+}
+
+# ------------------------------------------------------------
+#  Чем опознать родителя
+#
+#  По порядку надёжности: действующая подпись переживает любое
+#  обновление родителя; путь с заменёнными версиями переживает
+#  обновление, но не переезд; имя процесса не переживает ничего и
+#  подделывается в одну строку — поэтому оно последнее и помечено
+#  как слабое.
+# ------------------------------------------------------------
+function Get-CgParentIdentity {
+    param([string]$ParentPath, [string]$ParentName = '')
+    $np = Get-CgNormPath $ParentPath
+    if ($np) {
+        $sig = Get-CgSignature $np
+        if ($sig -and $sig.Valid -and $sig.Signer) {
+            return [PSCustomObject]@{ Kind = 'sig'; Key = $sig.Signer; Label = "«$($sig.Signer)»"; Weak = $false }
+        }
+        $pat = Get-CgPathPattern $np
+        if ($pat) {
+            return [PSCustomObject]@{ Kind = 'pattern'; Key = $pat; Label = $pat; Weak = $false }
+        }
+    }
+    $leaf = $ParentName
+    if (-not $leaf -and $np) { $leaf = Split-Path -Leaf $np }
+    if ($leaf) {
+        return [PSCustomObject]@{ Kind = 'name'; Key = $leaf; Label = "процесса $leaf"; Weak = $true }
+    }
+    return $null
+}
+
+# Интерпретаторы: подписаны Microsoft и запускают что угодно.
+# Доверять им «по издателю» — всё равно что не проверять вовсе.
+$script:CgInterpreters = @('powershell.exe', 'pwsh.exe', 'cmd.exe', 'wscript.exe', 'cscript.exe',
+                           'mshta.exe', 'rundll32.exe', 'regsvr32.exe', 'node.exe', 'python.exe',
+                           'conhost.exe', 'bash.exe', 'wsl.exe')
 
 function Get-CgTrustRules {
     if ($null -ne $script:CgTrustRules) { return $script:CgTrustRules }
@@ -158,7 +225,7 @@ function Get-CgTrustMap {
 #  разница между мгновением и секундами.
 # ------------------------------------------------------------
 function Test-CgTrustedFile {
-    param([string]$Path, [string]$Hash = '')
+    param([string]$Path, [string]$Hash = '', [string]$ParentPath = '', [string]$ParentName = '')
 
     $rules = @(Get-CgTrustRules | Where-Object { $_.Type -eq 'file' })
     if (-not $rules.Count) { return $null }
@@ -175,6 +242,29 @@ function Test-CgTrustedFile {
         } elseif ($r.Scope -eq 'folder' -and $np -and $r.Folder) {
             $f = $r.Folder.ToLowerInvariant().TrimEnd('\')
             if ($f -and $np.StartsWith($f + '\')) { return $r }
+        }
+    }
+
+    # 1a) путь с подстановкой: пережившее обновление доверие
+    foreach ($r in $rules) {
+        if ($r.Scope -ne 'pathpattern' -or -not $np -or -not $r.Pattern) { continue }
+        if ($np -like $r.Pattern.ToLowerInvariant()) { return $r }
+    }
+
+    # 1b) родитель: «этот интерпретатор, но только из этих рук».
+    #     Считается до чтения файла — нужна лишь подпись родителя,
+    #     и та берётся из кеша подписей.
+    $byParent = @($rules | Where-Object { $_.Scope -eq 'parent' })
+    if ($byParent.Count -and $np -and ($ParentPath -or $ParentName)) {
+        $childLeaf = (Split-Path -Leaf $np)
+        $pIdent = Get-CgParentIdentity $ParentPath $ParentName
+        if ($pIdent) {
+            foreach ($r in $byParent) {
+                if ($r.Name -and $r.Name.ToLowerInvariant() -ne $childLeaf) { continue }
+                if ("$($r.ParentKind)" -ne $pIdent.Kind) { continue }
+                if ("$($r.ParentKey)".ToLowerInvariant() -ne "$($pIdent.Key)".ToLowerInvariant()) { continue }
+                return $r
+            }
         }
     }
 
@@ -243,7 +333,7 @@ function Get-CgTrustKeyForFile {
 #  для этого файла — решает интерфейс, считает эта функция.
 # ------------------------------------------------------------
 function Get-CgTrustOptions {
-    param([string]$Path, [string]$Hash = '')
+    param([string]$Path, [string]$Hash = '', [string]$ParentPath = '', [string]$ParentName = '')
 
     $out  = @()
     $np   = Get-CgNormPath $Path
@@ -257,7 +347,37 @@ function Get-CgTrustOptions {
     $signer = ''
     if ($sig -and $sig.Valid) { $signer = $sig.Signer }
 
-    if ($signer) {
+    # Чем опознан родитель и стоит ли предлагать такую область
+    $parentOpt = $null
+    # Без имени самой программы правило «родитель» не на что вешать:
+    # ключ строится из имени потомка. У защищённых процессов путь не
+    # читается, и предлагать такую область там нечестно.
+    if (($ParentPath -or $ParentName) -and $leaf) {
+        $pIdent = Get-CgParentIdentity $ParentPath $ParentName
+        if ($pIdent) {
+            $pSafe = 'good'
+            $pHint = 'Самая узкая область для интерпретатора: powershell.exe останется подозрительным везде, кроме запусков именно из этих рук.'
+            if ($pIdent.Weak) {
+                $pSafe = 'risky'
+                $pHint = 'Родителя удалось опознать только по имени процесса, а имя подделывается в одну строку. Берите, если другого способа нет.'
+            }
+            $parentOpt = [PSCustomObject]@{
+                Scope = 'parent'
+                Title = "$leaf, запущенный из $($pIdent.Label)"
+                Hint  = $pHint
+                Safe  = $pSafe
+            }
+        }
+    }
+    $isInterp = ($leaf -and ($script:CgInterpreters -contains $leaf.ToLowerInvariant()))
+
+    # Для интерпретатора «родитель» — правильный ответ по умолчанию, и
+    # потому он идёт первым, раньше издателя: powershell.exe подписан
+    # Microsoft, и доверие «по издателю» здесь означает не проверять
+    # его больше никогда.
+    if ($parentOpt -and $isInterp) { $out += $parentOpt }
+
+    if ($signer -and -not $isInterp) {
         # Для подписанной программы это правильный ответ по умолчанию:
         # переживает обновление и переезд в другую папку, но не
         # распространяется ни на что чужое.
@@ -271,6 +391,31 @@ function Get-CgTrustOptions {
             Scope = 'publisher'
             Title = "Всё, что подписал «$signer»"
             Hint  = 'Шире: любые программы этого издателя. Разумно, если вы ему и так доверяете.'
+            Safe  = 'ok'
+        }
+    }
+
+    if ($parentOpt -and -not $isInterp) { $out += $parentOpt }
+
+    # Издателя для интерпретатора предлагаем последним и честно
+    # называем, чем это плохо.
+    if ($signer -and $isInterp) {
+        $out += [PSCustomObject]@{
+            Scope = 'publisher'
+            Title = "Всё, что подписал «$signer»"
+            Hint  = 'Очень широко: это системный интерпретатор, и такое доверие снимет вопросы к нему при любом запуске, кем бы он ни был запущен.'
+            Safe  = 'risky'
+        }
+    }
+
+    # Путь с версией внутри — доверие, переживающее обновление
+    $pattern = ''
+    if ($np) { $pattern = Get-CgPathPattern $np }
+    if ($pattern -and $pattern -ne $np) {
+        $out += [PSCustomObject]@{
+            Scope = 'pathpattern'
+            Title = "Эта программа по пути $pattern"
+            Hint  = 'В пути есть номер версии или папка сборки. Такое доверие переживёт обновление программы, но не переезд в другое место.'
             Safe  = 'ok'
         }
     }
@@ -307,12 +452,19 @@ function Add-CgTrust {
         [string]$Key = '',
         [string]$Label = '',
         [string]$Note = '',
-        [ValidateSet('exact', 'program', 'publisher', 'folder')] [string]$Scope = 'exact',
+        [ValidateSet('exact', 'program', 'publisher', 'folder', 'parent', 'pathpattern')] [string]$Scope = 'exact',
         [string]$Path = '',
         [string]$Hash = '',
         [string]$Signer = '',
-        [string]$Folder = ''
+        [string]$Folder = '',
+        [string]$ParentPath = '',
+        [string]$ParentName = '',
+        [string]$Pattern = ''
     )
+
+    $ParentKind = ''
+    $ParentKey = ''
+    $ParentLabel = ''
 
     $entry = $null
 
@@ -343,6 +495,20 @@ function Add-CgTrust {
                 if (-not $Folder) { return [PSCustomObject]@{ Ok = $false; Message = 'Не удалось определить папку' } }
                 $Key = "folder:$Folder"
             }
+            'parent' {
+                $pIdent = Get-CgParentIdentity $ParentPath $ParentName
+                if (-not $pIdent) { return [PSCustomObject]@{ Ok = $false; Message = 'Родителя опознать не удалось — доверять «по родителю» нечему' } }
+                if (-not $leaf) { return [PSCustomObject]@{ Ok = $false; Message = 'Не удалось определить имя программы' } }
+                $ParentKind  = $pIdent.Kind
+                $ParentKey   = $pIdent.Key
+                $ParentLabel = $pIdent.Label
+                $Key = "parent:$($pIdent.Kind)|$($pIdent.Key)|$leaf"
+            }
+            'pathpattern' {
+                if (-not $Pattern) { $Pattern = Get-CgPathPattern $np }
+                if (-not $Pattern) { return [PSCustomObject]@{ Ok = $false; Message = 'Не удалось построить путь с подстановкой' } }
+                $Key = "pattern:$Pattern"
+            }
             default {
                 if ($Hash) { $Key = $Hash } elseif ($np) { $Key = $np }
             }
@@ -360,6 +526,10 @@ function Add-CgTrust {
             Folder = $Folder
             Name   = $leaf
             Signer = $Signer
+            ParentKind  = $ParentKind
+            ParentKey   = $ParentKey
+            ParentLabel = $ParentLabel
+            Pattern     = $Pattern
             Label  = $Label
             Note   = $Note
             Added  = (Get-Date).ToString('o')
@@ -407,10 +577,12 @@ function Get-CgTrustScopeText {
         }
     }
     switch ($Entry.Scope) {
-        'program'   { return 'Программа (имя + издатель)' }
-        'publisher' { return 'Издатель' }
-        'folder'    { return 'Папка' }
-        default     { return 'Один файл' }
+        'program'     { return 'Программа (имя + издатель)' }
+        'publisher'   { return 'Издатель' }
+        'folder'      { return 'Папка' }
+        'parent'      { return "Родитель ($($Entry.ParentLabel))" }
+        'pathpattern' { return 'Путь без версии' }
+        default       { return 'Один файл' }
     }
 }
 
