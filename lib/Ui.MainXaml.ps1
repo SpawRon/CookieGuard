@@ -557,10 +557,16 @@ $script:CgMainXaml = @'
                   <StackPanel Grid.Column="1" VerticalAlignment="Center">
                     <TextBlock Text="Версия программы" Style="{StaticResource SettingName}"/>
                     <TextBlock x:Name="UpdStats" Text="" Style="{StaticResource Sub}" Margin="0,3,0,0"/>
+                    <!-- Откуда запущена эта копия и откуда придёт обновление.
+                         Без этого правки, сделанные в другой папке или не
+                         отправленные на GitHub, выглядят как «обновление не
+                         работает», хотя кнопка честно ставит то, что видит. -->
+                    <TextBlock x:Name="UpdWhere" Text="" Style="{StaticResource Stat}" FontSize="11" TextWrapping="Wrap"
+                               LineHeight="17" Margin="0,6,0,0"/>
                   </StackPanel>
                   <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
                     <Button x:Name="BtnUpdCheck"   Content="Проверить"/>
-                    <Button x:Name="BtnUpdInstall" Content="Обновить" Style="{StaticResource Primary}" IsEnabled="False"/>
+                    <Button x:Name="BtnUpdInstall" Content="Обновить" Style="{StaticResource Primary}"/>
                     <Button x:Name="BtnUpdToken"   Content="Ключ GitHub" Style="{StaticResource Ghost}" Margin="0"/>
                   </StackPanel>
                 </Grid>

@@ -60,7 +60,7 @@ foreach ($n in @('ChipAdmin','ChipAudit','ChipMon','BtnScan','BtnMon','Cards','B
                  'TitleBar','BtnMinW','BtnMaxW','BtnCloseW','Nav','BtnScanFiles','BtnScanFiles2',
                  'TglAudit','TglGuard','AuditSub',
                  'Inspector','InspKind','InspTitle','BtnInspClose','BtnDiag',
-                 'UpdStats','BtnUpdCheck','BtnUpdInstall','BtnUpdToken',
+                 'UpdStats','UpdWhere','BtnUpdCheck','BtnUpdInstall','BtnUpdToken',
                  'BtnInspect','FixHead','FixPanel',
                  'NavCol','NavPanel','BtnNavToggle','NavActions','NavActionsMini',
                  'BtnScanMini','BtnScanFilesMini','BtnMonMini','NavHeadWatch','NavHeadAnalyse',
@@ -162,15 +162,38 @@ function Update-Cards {
         $ui.ChipAudit.Foreground = '#FF5E5E'
     }
 
-    try {
-        $st = Get-MpComputerStatus -ErrorAction Stop
-        if ($st.RealTimeProtectionEnabled) { $null = $ui.Cards.Children.Add((New-Card 'Защита Windows' 'работает' '#4ADE80' ("базы: {0} дн." -f $st.AntivirusSignatureAge))) }
-        else { $null = $ui.Cards.Children.Add((New-Card 'Защита Windows' 'выключена' '#FF5E5E' 'Включите защиту в реальном времени')) }
-        $ex = @((Get-MpPreference).ExclusionPath).Count + @((Get-MpPreference).ExclusionProcess).Count
-        if ($ex) { $null = $ui.Cards.Children.Add((New-Card 'Исключения антивируса' "$ex" '#FFB340' 'Эти места Defender не проверяет')) }
+    # Спрашиваем не только Defender: под сторонним антивирусом Windows
+    # штатно держит его выключенным, и красная плитка была бы ложной тревогой.
+    $av = Get-CgAntivirusSummary
+    switch ($av.State) {
+        'Defender' {
+            $col = '#4ADE80'; if (-not $av.Fresh) { $col = '#FFB340' }
+            $null = $ui.Cards.Children.Add((New-Card 'Антивирус' 'работает' $col ("{0} · базы: {1} дн." -f $av.Name, $av.SignatureAge)))
+        }
+        'Other' {
+            $col = '#4ADE80'; $sub = $av.Name
+            if (-not $av.Fresh) { $col = '#FFB340'; $sub += ' · базы устарели' }
+            $null = $ui.Cards.Children.Add((New-Card 'Антивирус' 'работает' $col $sub))
+        }
+        'Off' {
+            $sub = 'Включите защиту в реальном времени'
+            if ($av.Idle.Count) { $sub = '{0} установлен, но не защищает' -f ($av.Idle -join ', ') }
+            $null = $ui.Cards.Children.Add((New-Card 'Антивирус' 'выключен' '#FF5E5E' $sub))
+        }
+        default {
+            $null = $ui.Cards.Children.Add((New-Card 'Антивирус' 'неизвестно' '#7C8694' 'Не удалось опросить Defender'))
+        }
+    }
+
+    # Исключения — это настройка Defender. Пока защищает другой антивирус,
+    # плитку показываем, только если они заданы: с меткой «Defender», чтобы
+    # их не приняли за исключения того, кто работает.
+    if ($null -ne $av.Exclusions) {
+        if ($av.State -eq 'Other') {
+            if ($av.Exclusions) { $null = $ui.Cards.Children.Add((New-Card 'Исключения Defender' "$($av.Exclusions)" '#FFB340' 'Defender сейчас в запасе, но эти места он не проверит')) }
+        }
+        elseif ($av.Exclusions) { $null = $ui.Cards.Children.Add((New-Card 'Исключения антивируса' "$($av.Exclusions)" '#FFB340' 'Эти места Defender не проверяет')) }
         else { $null = $ui.Cards.Children.Add((New-Card 'Исключения антивируса' 'нет' '#4ADE80' '')) }
-    } catch {
-        $null = $ui.Cards.Children.Add((New-Card 'Защита Windows' 'неизвестно' '#7C8694' 'Не удалось опросить Defender'))
     }
 
     $brs = Get-CgBrowsers
@@ -1457,7 +1480,7 @@ $tips = @{
     Nav            = 'Разделы программы. Нижние три — для разбора: что спрятано, чему вы доверяете, что программа делала.'
     BtnDiag        = 'Проверяет предпосылки: права, политику аудита, групповую политику поверх неё, службы, журнал безопасности, антивирус и файлы браузеров. Отвечает, почему переключатель не поддаётся.'
     BtnUpdCheck    = 'Спросить GitHub, вышла ли новая версия. Наружу уходит только запрос к api.github.com.'
-    BtnUpdInstall  = 'Заменить файлы программы на версию из репозитория. Рабочие данные — эталон, доверенные, карантин, журналы — остаются нетронутыми. Ставится только по этой кнопке, никогда само.'
+    BtnUpdInstall  = 'Заменить файлы программы на версию из репозитория — даже если установлена та же самая. Рабочие данные — эталон, доверенные, карантин, журналы — остаются нетронутыми. Ставится только по этой кнопке, никогда само.'
     BtnUpdToken    = 'Ключ доступа GitHub. Нужен, только если репозиторий приватный. Хранится на этом компьютере, в папке state.'
     BtnKill        = 'Завершить выбранный процесс вместе со всеми дочерними. Критические процессы Windows программа не трогает.'
     BtnQuar        = 'Обратимо спрятать файл: запустить его будет нельзя, но можно вернуть в разделе «Карантин».'
@@ -1789,6 +1812,8 @@ $ui.BtnDiag.Add_Click({ Show-CgDiagnosis })
 $script:CgPendingUpdate = $null
 
 function Update-CgVersionText {
+    $ui.UpdWhere.Text = ("программа: {0}`nданные:    {1}`nисточник:  github.com/{2}/{3}, ветка {4}" -f
+        (Get-CgRoot), (Get-CgDataRoot), $script:CgRepoOwner, $script:CgRepoName, $script:CgRepoBranch)
     $cur = Get-CgInstalledCommit
     if ($cur) {
         $ui.UpdStats.Text = ('установлено: {0}' -f $cur.Substring(0, [Math]::Min(7, $cur.Length)))
@@ -1796,7 +1821,6 @@ function Update-CgVersionText {
         $ui.UpdStats.Text = 'версия не отмечена — нажмите «Проверить»'
     }
     $ui.UpdStats.Foreground = '#7C8694'
-    $ui.BtnUpdInstall.IsEnabled = $false
     $script:CgPendingUpdate = $null
 }
 
@@ -1816,8 +1840,7 @@ $ui.BtnUpdCheck.Add_Click({
     if (-not $r.HasUpdate) {
         $ui.UpdStats.Text = ('установлена последняя версия: {0}' -f $r.Latest.Short)
         $ui.UpdStats.Foreground = '#4ADE80'
-        $ui.BtnUpdInstall.IsEnabled = $false
-        Set-Status 'Обновлений нет'
+        Set-Status 'Обновлений нет — «Обновить» поставит ту же версию заново'
         return
     }
 
@@ -1826,19 +1849,40 @@ $ui.BtnUpdCheck.Add_Click({
     if ($r.Latest.Date) { $when = $r.Latest.Date.ToLocalTime().ToString('dd.MM.yyyy HH:mm') }
     $ui.UpdStats.Text = ('есть обновление: {0} от {1}' -f $r.Latest.Short, $when)
     $ui.UpdStats.Foreground = '#3B9EFF'
-    $ui.BtnUpdInstall.IsEnabled = $true
     Set-Status ('Доступно обновление: ' + $r.Latest.Message)
 })
 
+# Кнопка работает всегда, что бы ни показывала проверка. Нет
+# свежей версии или проверку не нажимали — берём то, что сейчас
+# лежит в репозитории, и ставим заново поверх установленного:
+# так чинится копия, в которой файлы испорчены или заменены
+# вручную, а отметка версии об этом не знает.
 $ui.BtnUpdInstall.Add_Click({
     $u = $script:CgPendingUpdate
-    if (-not $u) { Set-Status 'Сначала нажмите «Проверить»'; return }
+    if (-not $u) {
+        Set-Busy $true 'Спрашиваю GitHub...'
+        $latest = Get-CgLatestCommit
+        Set-Busy $false
+        if (-not $latest.Ok) {
+            $null = Show-CgDialog -Title 'Не удалось связаться с GitHub' -Text $latest.Error `
+                -Subject "$script:CgRepoOwner/$script:CgRepoName ($script:CgRepoBranch)" -Kind 'warn'
+            return
+        }
+        $u = $latest
+    }
+    $same = ((Get-CgInstalledCommit) -eq $u.Sha)
 
     $when = ''
     if ($u.Date) { $when = $u.Date.ToLocalTime().ToString('dd.MM.yyyy HH:mm') }
-    if (-not (Confirm-CgDialog -Title 'Обновить программу?' `
-                -Text 'Файлы программы будут заменены на версию из репозитория. Эталон, доверенные, карантин и журналы останутся на месте. После обновления программу нужно перезапустить.' `
-                -Subject ("{0}  {1}`n{2}" -f $u.Short, $when, $u.Message) -Kind 'question' -Yes 'Обновить')) { return }
+    $title = 'Обновить программу?'; $text = 'Файлы программы будут заменены на версию из репозитория.'; $kind = 'question'; $yes = 'Обновить'
+    if ($same) {
+        $title = 'Переустановить ту же версию?'
+        $text  = 'Эта версия уже установлена. Файлы программы будут переписаны заново из репозитория — все правки, сделанные в установленной копии, пропадут.'
+        $kind  = 'warn'; $yes = 'Переустановить'
+    }
+    $text += ' Модули lib\*.ps1, которых нет в репозитории, будут удалены. Эталон, доверенные, карантин и журналы останутся на месте. После обновления программу нужно перезапустить.'
+    if (-not (Confirm-CgDialog -Title $title -Text $text `
+                -Subject ("{0}  {1}`n{2}" -f $u.Short, $when, $u.Message) -Kind $kind -Yes $yes)) { return }
 
     Set-Busy $true 'Обновляю...'
     $res = Install-CgUpdate $u.Sha { param($t) Set-Status $t }

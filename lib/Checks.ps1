@@ -48,6 +48,51 @@ function Get-CgOtherAntivirus {
     return $out
 }
 
+# Кто сейчас защищает компьютер — сводка для плитки обзора. Логика та
+# же, что в Get-CgDefenderFindings: Defender в запасе при работающем
+# стороннем антивирусе — не брешь. Окна не касается, поэтому её можно
+# вызвать и из консоли.
+#   State      — Defender | Other | Off | Unknown
+#   Name       — кто защищает (для Other — все работающие через запятую)
+#   Fresh      — свежи ли базы у того, кто защищает
+#   Idle       — сторонние антивирусы, которые установлены, но не защищают
+#   Exclusions — сколько исключений у Defender; $null, если узнать не удалось
+function Get-CgAntivirusSummary {
+    $other  = @(Get-CgOtherAntivirus)
+    $guards = @($other | Where-Object { $_.Active })
+    $s = [PSCustomObject]@{
+        State = 'Unknown'; Name = ''; Fresh = $null; SignatureAge = $null
+        Idle = @($other | Where-Object { -not $_.Active } | ForEach-Object { $_.Name })
+        Exclusions = $null
+    }
+
+    $st = $null
+    try { $st = Get-MpComputerStatus -ErrorAction Stop } catch { }
+    if ($st -and $st.RealTimeProtectionEnabled) {
+        $s.State = 'Defender'; $s.Name = 'Microsoft Defender'
+        $s.SignatureAge = $st.AntivirusSignatureAge
+        $s.Fresh = ($st.AntivirusSignatureAge -le 3)
+    } elseif ($guards.Count) {
+        $s.State = 'Other'
+        $s.Name  = ($guards | ForEach-Object { $_.Name }) -join ', '
+        $s.Fresh = -not @($guards | Where-Object { -not $_.Fresh }).Count
+    } elseif ($st) {
+        $s.State = 'Off'
+    }
+
+    # Когда служба Defender стоит (а под чужим антивирусом она стоит),
+    # Get-MpPreference падает. @($null).Count в Windows PowerShell — это 1,
+    # поэтому пустые списки считаем только по непустым строкам. Без прав
+    # администратора вместо списка приходит «N/A: Must be an administrator…» —
+    # это тоже «не знаем», а не одно исключение.
+    try {
+        $pref = Get-MpPreference -ErrorAction Stop
+        $all = @(@($pref.ExclusionPath) + @($pref.ExclusionExtension) + @($pref.ExclusionProcess) | Where-Object { "$_" })
+        if (-not @($all | Where-Object { "$_" -match '^N/A' }).Count) { $s.Exclusions = $all.Count }
+    } catch { }
+    return $s
+}
+
 function Get-CgDefenderFindings {
     $f = @()
     $other  = @(Get-CgOtherAntivirus)
