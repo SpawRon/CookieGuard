@@ -1043,8 +1043,11 @@ function Get-CgIconImage {
 function New-CgWindow {
     param([string]$Xaml)
     $full = $Xaml.Replace('<!--THEME-->', $script:CgThemeXaml)
-    $reader = New-Object System.Xml.XmlNodeReader ([xml]$full)
+    $doc = [xml]$full
+    Convert-CgXamlLang $doc
+    $reader = New-Object System.Xml.XmlNodeReader $doc
     $w = [Windows.Markup.XamlReader]::Load($reader)
+    Add-CgLangToGrids $w
     $ico = Get-CgIconImage
     if ($ico -and $w -is [System.Windows.Window]) { $w.Icon = $ico }
     return $w

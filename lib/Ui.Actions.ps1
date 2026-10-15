@@ -49,7 +49,7 @@ function Add-CgRowMenu {
                 continue
             }
             $mi = New-Object System.Windows.Controls.MenuItem
-            $mi.Header = $d.Text
+            $mi.Header = T "$($d.Text)"
             if ($d.Glyph) { $mi.Tag = [string][char][int]$d.Glyph }
             if ($d.ContainsKey('Enabled') -and -not $d.Enabled) { $mi.IsEnabled = $false }
             $act = $d.Action
@@ -95,7 +95,7 @@ function Invoke-CgTrustRow {
         $label = "$($Row.Browser): $($Row.Name)"
         $note = Show-CgPrompt -Title 'Больше про это не спрашивать' `
             -Text 'Расширение перестанет попадать в находки. Напишите себе на будущее, почему вы его оставляете.' `
-            -Subject $label -Default 'поставил сам, пользуюсь' -OkText 'Доверять'
+            -Subject $label -Default (T 'поставил сам, пользуюсь') -OkText 'Доверять'
         if ($null -eq $note) { return $null }
         return (Add-CgTrust -Type 'extension' -Key "$($Row.Browser)|$($Row.Id)" -Label $label -Note $note)
     }
@@ -106,7 +106,7 @@ function Invoke-CgTrustRow {
         $label = "$($Row.Target.Name)"
         $note = Show-CgPrompt -Title 'Больше про это не спрашивать' `
             -Text 'Сертификат перестанет попадать в находки. Если его когда-нибудь подменят, у подмены будет другой отпечаток — и она попадёт.' `
-            -Subject "$label  ($($Row.Target.Thumbprint))" -Default 'знаю, чей он' -OkText 'Доверять'
+            -Subject "$label  ($($Row.Target.Thumbprint))" -Default (T 'знаю, чей он') -OkText 'Доверять'
         if ($null -eq $note) { return $null }
         return (Add-CgTrust -Type 'cert' -Key "$($Row.Target.Thumbprint)" -Label $label -Note $note)
     }
@@ -145,7 +145,7 @@ function Invoke-CgTrustRow {
     if ($path) { $extra = "`n`nФайла по пути $path сейчас нет — доверие будет привязано к самой находке." }
     $note = Show-CgPrompt -Title 'Больше про это не спрашивать' `
         -Text ('Эта находка перестанет попадать в список.' + $extra) `
-        -Subject $title -Default 'разобрался, так и должно быть' -OkText 'Доверять'
+        -Subject $title -Default (T 'разобрался, так и должно быть') -OkText 'Доверять'
     if ($null -eq $note) { return $null }
     return (Add-CgTrust -Type 'finding' -Key "$area|$title" -Label $title -Note $note)
 }

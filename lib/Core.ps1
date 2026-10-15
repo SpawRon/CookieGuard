@@ -533,3 +533,8 @@ function Get-CgRiskLevel {
     if ($Score -ge 14) { return 'NOTE' }
     return 'OK'
 }
+
+# Язык интерфейса: функция T и перевод разметки. Здесь, а не в
+# CookieGuard.ps1, чтобы T была везде, где загружено ядро, — в том
+# числе в фоновых потоках.
+. (Join-Path $PSScriptRoot 'Lang.ps1')

@@ -124,7 +124,9 @@ function Format-CgSize {
 # ------------------------------------------------------------
 function Set-CgSbStatus {
     param($Ctx, [string]$Text)
-    $Ctx.U.SbStatus.Text = $Text
+    # Переводим здесь, на показе: строки хода проверки приходят из
+    # отдельного потока, где словаря нет.
+    $Ctx.U.SbStatus.Text = T $Text
 }
 
 function Update-CgSbView {
@@ -455,14 +457,14 @@ function Initialize-CgScanPage {
     $u.SbAddFiles.Add_Click({
         $d = New-Object Microsoft.Win32.OpenFileDialog
         $d.Multiselect = $true
-        $d.Title = 'Что проверить'
-        $d.Filter = 'Все файлы|*.*'
+        $d.Title = T 'Что проверить'
+        $d.Filter = T 'Все файлы|*.*'
         if ($d.ShowDialog()) { Add-CgSbPaths $ctx @($d.FileNames) }
     }.GetNewClosure())
 
     $u.SbAddFolder.Add_Click({
         $d = New-Object System.Windows.Forms.FolderBrowserDialog
-        $d.Description = 'Какую папку проверить'
+        $d.Description = T 'Какую папку проверить'
         $d.ShowNewFolderButton = $false
         if ($d.ShowDialog() -eq 'OK') { Add-CgSbPaths $ctx @($d.SelectedPath) }
     }.GetNewClosure())

@@ -582,6 +582,28 @@ $script:CgMainXaml = @'
                 </Grid>
               </Border>
 
+              <TextBlock Text="ИНТЕРФЕЙС" Style="{StaticResource GroupLabel}"/>
+
+              <!-- Подпись двуязычная: найти переключатель должен и тот,
+                   кто не читает язык, на котором сейчас окно. -->
+              <Border Style="{StaticResource CardRow}" Margin="0,0,0,26">
+                <Grid>
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE8C1;" Style="{StaticResource SettingIconGlyph}"/></Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="Язык интерфейса · Interface language" Style="{StaticResource SettingName}"/>
+                    <TextBlock x:Name="LangSub" Text="Новый язык включится после перезапуска окна." Style="{StaticResource Sub}" Margin="0,3,0,0"/>
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
+                    <ComboBox x:Name="CmbLang" Width="130" Margin="0">
+                      <ComboBoxItem Content="Русский" Tag="ru"/>
+                      <ComboBoxItem Content="English" Tag="en"/>
+                    </ComboBox>
+                    <Button x:Name="BtnLangRestart" Content="Перезапустить" Style="{StaticResource Primary}" Margin="8,0,0,0" Visibility="Collapsed"/>
+                  </StackPanel>
+                </Grid>
+              </Border>
+
               <TextBlock Text="ЕСЛИ ЧТО-ТО НЕ ВКЛЮЧАЕТСЯ" Style="{StaticResource GroupLabel}"/>
 
               <Border Style="{StaticResource CardRow}" Margin="0,0,0,20">

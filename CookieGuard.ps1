@@ -86,7 +86,8 @@ foreach ($n in @('ChipAdmin','ChipAudit','ChipMon','BtnScan','BtnMon','Cards','B
                  'HeroHead','HeroSub','HeroGo','HeroCrit','HeroWarn','HeroQuar','HeroTotal',
                  'HeroBarCrit','HeroBarWarn','HeroBarRest',
                  'BtnFixAll','BtnFixAll2','BtnExtVerify',
-                 'SbAddFiles','SbAddFolder','SbClear','SbDeep','SbCheck','SbDropHint','SbListBox','SbGrid','SbStatus','SbProgress')) {
+                 'SbAddFiles','SbAddFolder','SbClear','SbDeep','SbCheck','SbDropHint','SbListBox','SbGrid','SbStatus','SbProgress',
+                 'CmbLang','LangSub','BtnLangRestart')) {
     $ui[$n] = $win.FindName($n)
 }
 
@@ -134,7 +135,7 @@ $ui.GridMon.ItemsSource = $app.MonItems
 # ------------------------------------------------------------
 #  Вспомогательное
 # ------------------------------------------------------------
-function Set-Status { param([string]$T) $ui.StatusText.Text = $T }
+function Set-Status { param([string]$T) $ui.StatusText.Text = (T $T) }
 
 function Set-Busy {
     param([bool]$On, [string]$Text = '')
@@ -148,17 +149,17 @@ function New-Card {
     $b.Style = $win.FindResource('Tile')
     $sp = New-Object System.Windows.Controls.StackPanel
     $t1 = New-Object System.Windows.Controls.TextBlock
-    $t1.Text = $Title; $t1.FontSize = 11.5
+    $t1.Text = (T $Title); $t1.FontSize = 11.5
     $t1.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#7C8694'))
     $t2 = New-Object System.Windows.Controls.TextBlock
-    $t2.Text = $Value; $t2.FontSize = 21; $t2.FontWeight = 'SemiBold'; $t2.Margin = '0,6,0,0'
+    $t2.Text = (T $Value); $t2.FontSize = 21; $t2.FontWeight = 'SemiBold'; $t2.Margin = '0,6,0,0'
     $t2.TextWrapping = 'Wrap'
     $t2.FontFamily = $win.FindResource('FontDisplay')
     $t2.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($Color))
     $null = $sp.Children.Add($t1); $null = $sp.Children.Add($t2)
     if ($Sub) {
         $t3 = New-Object System.Windows.Controls.TextBlock
-        $t3.Text = $Sub; $t3.FontSize = 11; $t3.Margin = '0,4,0,0'; $t3.TextWrapping = 'Wrap'
+        $t3.Text = (T $Sub); $t3.FontSize = 11; $t3.Margin = '0,4,0,0'; $t3.TextWrapping = 'Wrap'
         $t3.FontFamily = $win.FindResource('FontMono')
         $t3.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#7C8694'))
         $null = $sp.Children.Add($t3)
@@ -173,11 +174,11 @@ function Update-Cards {
     $auditOn = Test-CgAuditEnabled
     if ($auditOn) {
         $null = $ui.Cards.Children.Add((New-Card 'Аудит доступа к файлам' 'включён' '#4ADE80' 'Windows записывает, кто открывает cookie'))
-        $ui.ChipAudit.Text = 'аудит: вкл'
+        $ui.ChipAudit.Text = (T 'аудит: вкл')
         $ui.ChipAudit.Foreground = '#4ADE80'
     } else {
         $null = $ui.Cards.Children.Add((New-Card 'Аудит доступа к файлам' 'выключен' '#FF5E5E' 'Без него не видно, кто брал cookie'))
-        $ui.ChipAudit.Text = 'аудит: выкл'
+        $ui.ChipAudit.Text = (T 'аудит: выкл')
         $ui.ChipAudit.Foreground = '#FF5E5E'
     }
 
@@ -237,12 +238,13 @@ function Update-Cards {
 
     Update-CgHero $bd
 
-    if ($app.IsAdmin) { $ui.ChipAdmin.Text = 'администратор' } else { $ui.ChipAdmin.Text = 'без прав администратора' }
+    if ($app.IsAdmin) { $ui.ChipAdmin.Text = (T 'администратор') } else { $ui.ChipAdmin.Text = (T 'без прав администратора') }
     Sync-CgToggles
 }
 
 function Get-CgPlural {
     param([int]$N, [string]$One, [string]$Few, [string]$Many)
+    if ($script:CgLang -eq 'en') { if ($N -eq 1) { return (T $One) } return (T $Many) }
     $n10 = $N % 10; $n100 = $N % 100
     if ($n10 -eq 1 -and $n100 -ne 11) { return $One }
     if ($n10 -ge 2 -and $n10 -le 4 -and ($n100 -lt 12 -or $n100 -gt 14)) { return $Few }
@@ -259,9 +261,9 @@ function Update-CgHero {
 
     if (-not $app.LastScan) {
         $ui.HeroCrit.Text = '—'; $ui.HeroWarn.Text = '—'
-        $ui.HeroHead.Text = 'Обзор'
-        $ui.HeroSub.Text  = 'Проверки ещё не было — нажмите «Проверить систему».'
-        $ui.HeroTotal.Text = 'проверки ещё не было'
+        $ui.HeroHead.Text = (T 'Обзор')
+        $ui.HeroSub.Text  = (T 'Проверки ещё не было — нажмите «Проверить систему».')
+        $ui.HeroTotal.Text = (T 'проверки ещё не было')
         $ui.HeroBarCrit.Width = [System.Windows.GridLength]::new(0, $star)
         $ui.HeroBarWarn.Width = [System.Windows.GridLength]::new(0, $star)
         $ui.HeroBarRest.Width = [System.Windows.GridLength]::new(1, $star)
@@ -274,15 +276,15 @@ function Update-CgHero {
     $ui.HeroWarn.Text = "$w"
 
     if ($c) {
-        $ui.HeroHead.Text = '{0} {1} разбора' -f $c, (Get-CgPlural $c 'критичная находка ждёт' 'критичные находки ждут' 'критичных находок ждут')
+        $ui.HeroHead.Text = (T '{0} {1} разбора') -f $c, (Get-CgPlural $c 'критичная находка ждёт' 'критичные находки ждут' 'критичных находок ждут')
     } elseif ($w) {
-        $ui.HeroHead.Text = 'Критичного нет'
+        $ui.HeroHead.Text = (T 'Критичного нет')
     } else {
-        $ui.HeroHead.Text = 'Всё чисто'
+        $ui.HeroHead.Text = (T 'Всё чисто')
     }
     $sub = 'Проверка {0} в {1}.' -f $app.LastScan.ToString('dd.MM.yyyy'), $app.LastScan.ToString('HH:mm')
     if ($BaselineDate) { $sub += ' Эталон снят {0} в {1}.' -f $BaselineDate.ToString('dd.MM.yyyy'), $BaselineDate.ToString('HH:mm') }
-    $ui.HeroSub.Text = $sub
+    $ui.HeroSub.Text = (T $sub)
 
     $t = $c + $w
     $ui.HeroTotal.Text = '{0} {1}' -f $t, (Get-CgPlural $t 'находка' 'находки' 'находок')
@@ -315,16 +317,16 @@ function Show-Detail {
     $title = ''
     if ($Item.PSObject.Properties['Title'] -and $Item.Title) { $title = [string]$Item.Title }
     elseif ($Item.PSObject.Properties['Name']) { $title = [string]$Item.Name }
-    $ui.InspTitle.Text = $title
+    $ui.InspTitle.Text = (T $title)
 
     $sev = ''
     if ($Item.PSObject.Properties['Severity']) { $sev = [string]$Item.Severity }
     $m = $script:CgSevMap[$sev]
     if (-not $m) { $m = @('ПОДРОБНОСТИ', '#7C8694') }
-    $ui.InspKind.Text = $m[0]
+    $ui.InspKind.Text = (T $m[0])
     $ui.InspKind.Foreground = $m[1]
 
-    $ui.DetailBox.Text = "$($Item.Detail)".Trim()
+    $ui.DetailBox.Text = (T ("$($Item.Detail)".Trim()))
     Show-CgDetailPanel $true
 
     # Кнопка, которая ничего не сделает, хуже отсутствующей:
@@ -368,9 +370,9 @@ function Update-FixButtons {
 
     foreach ($fx in $fixers) {
         $b = New-Object System.Windows.Controls.Button
-        $b.Content = $fx.Button
+        $b.Content = (T $fx.Button)
         $b.Margin  = '0,0,7,7'
-        $b.ToolTip = ($fx.Title + "`n`n" + $fx.Explain)
+        $b.ToolTip = ((T $fx.Title) + "`n`n" + (T $fx.Explain))
         if ($fx.Risky) { $b.Style = $win.FindResource('Danger') } else { $b.Style = $win.FindResource('Primary') }
         $theItem = $Item
         $theFix  = $fx
@@ -508,7 +510,7 @@ $ui.BtnWeb.Add_Click({
         $null = $menu.Items.Add($mi)
     }
     $mi2 = New-Object System.Windows.Controls.MenuItem
-    $mi2.Header = 'Скопировать запрос'
+    $mi2.Header = (T 'Скопировать запрос')
     $mi2.Add_Click({ Set-Clipboard -Value $q; Set-Status 'Запрос скопирован' }.GetNewClosure())
     $null = $menu.Items.Add($mi2)
     $menu.PlacementTarget = $ui.BtnWeb
@@ -552,12 +554,12 @@ $ui.BtnVT.Add_Click({
         'badkey'    { Set-Status 'VirusTotal не принял ключ — задайте его заново в разделе «Защита»' }
         'ratelimit' { Set-Status 'Превышен предел запросов VirusTotal, попробуйте через минуту' }
         'unknown'   {
-            $ui.DetailBox.Text = $ui.DetailBox.Text + "`n`n--- VirusTotal ---`nЭтот файл VirusTotal неизвестен.`nSHA256: $h`n`nЗначит, он редкий. Для самодельного файла это норма, для скачанной программы — повод задуматься."
+            $ui.DetailBox.Text = $ui.DetailBox.Text + (T "`n`n--- VirusTotal ---`nЭтот файл VirusTotal неизвестен.`nSHA256: $h`n`nЗначит, он редкий. Для самодельного файла это норма, для скачанной программы — повод задуматься.")
             Set-Status 'VirusTotal: файл неизвестен'
         }
         'known'     {
             $pct = Get-CgVtRiskPercent $v
-            $ui.DetailBox.Text = $ui.DetailBox.Text + "`n`n--- VirusTotal ---`nВредоносным считают: $($v.Malicious) из $($v.Total) ($pct%)`nПодозрительным: $($v.Suspicious)`n$(if($v.Label){"Классификация: $($v.Label)`n"})SHA256: $h`nОтчёт: https://www.virustotal.com/gui/file/$h"
+            $ui.DetailBox.Text = $ui.DetailBox.Text + (T "`n`n--- VirusTotal ---`nВредоносным считают: $($v.Malicious) из $($v.Total) ($pct%)`nПодозрительным: $($v.Suspicious)`n$(if($v.Label){"Классификация: $($v.Label)`n"})SHA256: $h`nОтчёт: https://www.virustotal.com/gui/file/$h")
             Set-Status ("VirusTotal: {0} из {1} движков считают файл вредоносным" -f $v.Malicious, $v.Total)
         }
         default     { Set-Status "VirusTotal: $($v.Label)" }
@@ -569,7 +571,7 @@ $ui.BtnAsk.Add_Click({
     $s = $app.Selected
     $title = ''
     if ($s.PSObject.Properties['Title'] -and $s.Title) { $title = $s.Title } elseif ($s.PSObject.Properties['Name']) { $title = $s.Name }
-    $q = @"
+    $q = T @"
 Разбираю находку на своём компьютере с Windows. Объясни простыми словами, опасно ли это и что делать.
 
 Находка: $title
@@ -587,7 +589,7 @@ $($s.Detail)
     $maxUrl = 6000
     $short = $q
     if ($short.Length -gt $maxUrl) {
-        $short = $short.Substring(0, $maxUrl) + "`n`n[...текст обрезан для ссылки. Полная версия — в буфере обмена, вставьте Ctrl+V]"
+        $short = $short.Substring(0, $maxUrl) + (T "`n`n[...текст обрезан для ссылки. Полная версия — в буфере обмена, вставьте Ctrl+V]")
     }
     try { Set-Clipboard -Value $q } catch { }
 
@@ -605,7 +607,7 @@ $($s.Detail)
         $null = $menu.Items.Add($mi)
     }
     $mi2 = New-Object System.Windows.Controls.MenuItem
-    $mi2.Header = 'Только скопировать вопрос'
+    $mi2.Header = (T 'Только скопировать вопрос')
     $mi2.Add_Click({ Set-Status 'Вопрос с подробностями скопирован в буфер' }.GetNewClosure())
     $null = $menu.Items.Add($mi2)
     $menu.PlacementTarget = $ui.BtnAsk
@@ -621,7 +623,7 @@ $ui.BtnCopy.Add_Click({
 function Refresh-Trust {
     $app.Trust = @(Get-CgTrustView)
     $ui.GridTrust.ItemsSource = $app.Trust
-    $ui.TrustStats.Text = ("доверенных записей: {0}" -f $app.Trust.Count)
+    $ui.TrustStats.Text = ((T "доверенных записей: {0}") -f $app.Trust.Count)
 }
 
 # Доверие: выбор области вынесен в общее окно — одно и то же
@@ -738,16 +740,16 @@ function Update-DnsStats {
     # @() обязательно: при одном сетевом подключении PowerShell разворачивает
     # массив в одиночный объект, и .Count становится пустым
     $st = @(Get-CgDnsState)
-    if (-not $st.Count) { $ui.DnsStats.Text = 'сетевых подключений не найдено'; return }
+    if (-not $st.Count) { $ui.DnsStats.Text = (T 'сетевых подключений не найдено'); return }
     $on = @($st | Where-Object { $_.Filtering })
     if ($on.Count -eq $st.Count) {
-        $ui.DnsStats.Text = "включён: $($on[0].Profile.Name -replace ' —.*','')"
+        $ui.DnsStats.Text = (T "включён: $($on[0].Profile.Name -replace ' —.*','')")
         $ui.DnsStats.Foreground = 'LightGreen'
     } elseif ($on.Count) {
-        $ui.DnsStats.Text = "включён частично ($($on.Count) из $($st.Count))"
+        $ui.DnsStats.Text = (T "включён частично ($($on.Count) из $($st.Count))")
         $ui.DnsStats.Foreground = '#FFB340'
     } else {
-        $ui.DnsStats.Text = "выключен (сейчас: $($st[0].ServersText))"
+        $ui.DnsStats.Text = (T "выключен (сейчас: $($st[0].ServersText))")
         $ui.DnsStats.Foreground = '#7C8694'
     }
 }
@@ -776,7 +778,7 @@ $ui.BtnDnsTest.Add_Click({
     Set-Busy $true 'Проверяю фильтрацию...'
     $r = Test-CgDnsFiltering
     Set-Busy $false
-    $ui.DetailBox.Text = "--- Проверка безопасного сёрфинга ---`n`n" + $r.Message
+    $ui.DetailBox.Text = (T "--- Проверка безопасного сёрфинга ---`n`n") + (T $r.Message)
     if ($r.Working) { Set-Status 'Фильтрация работает' } else { Set-Status 'Фильтрация НЕ обнаружена — подробности ниже' }
 })
 
@@ -797,7 +799,7 @@ function Show-CgNotify {
         }
         $ico = [System.Windows.Forms.ToolTipIcon]::Warning
         if ($Level -eq 'CRIT') { $ico = [System.Windows.Forms.ToolTipIcon]::Error }
-        $script:TrayIcon.ShowBalloonTip(10000, $Title, $Text, $ico)
+        $script:TrayIcon.ShowBalloonTip(10000, (T $Title), (T $Text), $ico)
     } catch { }
 }
 
@@ -865,7 +867,7 @@ $ui.BtnNeutr.Add_Click({
 function Refresh-Quar {
     $app.Quar = @(Get-CgQuarantineList)
     $ui.GridQuar.ItemsSource = $app.Quar
-    $ui.QuarStats.Text = ("в карантине: {0}" -f $app.Quar.Count)
+    $ui.QuarStats.Text = ((T "в карантине: {0}") -f $app.Quar.Count)
 }
 $ui.BtnQuarRefresh.Add_Click({ Refresh-Quar })
 $ui.BtnQuarFolder.Add_Click({ Start-Process explorer.exe (Get-CgQuarantineDir) })
@@ -897,10 +899,10 @@ function Update-GuardStats {
         $hb = Join-Path (Get-CgDir 'state') 'guard-heartbeat.txt'
         $live = $false
         if (Test-Path -LiteralPath $hb) { try { $live = (((Get-Date) - [datetime]::Parse((Get-Content $hb -Raw))).TotalSeconds -lt 90) } catch { } }
-        if ($live) { $ui.GuardStats.Text = 'установлен, работает'; $ui.GuardStats.Foreground = 'LightGreen' }
-        else { $ui.GuardStats.Text = 'установлен (сердцебиения пока нет)'; $ui.GuardStats.Foreground = '#FFB340' }
+        if ($live) { $ui.GuardStats.Text = (T 'установлен, работает'); $ui.GuardStats.Foreground = 'LightGreen' }
+        else { $ui.GuardStats.Text = (T 'установлен (сердцебиения пока нет)'); $ui.GuardStats.Foreground = '#FFB340' }
     } else {
-        $ui.GuardStats.Text = 'не установлен — защита только при открытом окне'
+        $ui.GuardStats.Text = (T 'не установлен — защита только при открытом окне')
         $ui.GuardStats.Foreground = '#7C8694'
     }
     Sync-CgToggles
@@ -978,9 +980,9 @@ function Start-Monitor {
     $null = $ps.BeginInvoke()
     $app.MonRs = $rs; $app.MonPs = $ps
 
-    $ui.BtnMon.Content  = 'Остановить монитор'
-    $ui.BtnMon2.Content = 'Остановить монитор'
-    $ui.ChipMon.Text = 'монитор: работает'
+    $ui.BtnMon.Content  = (T 'Остановить монитор')
+    $ui.BtnMon2.Content = (T 'Остановить монитор')
+    $ui.ChipMon.Text = (T 'монитор: работает')
     $ui.ChipMon.Foreground = '#4ADE80'
     if (-not (Test-CgAuditEnabled)) {
         Set-Status 'Монитор запущен. Аудит выключен — обращения к cookie видны не будут, включите его в разделе «Защита».'
@@ -997,9 +999,9 @@ function Stop-Monitor {
     try { if ($app.MonRs) { $app.MonRs.Close(); $app.MonRs.Dispose() } } catch { }
     $app.MonPs = $null; $app.MonRs = $null
     $sync.Running = $false
-    $ui.BtnMon.Content  = 'Запустить монитор'
-    $ui.BtnMon2.Content = 'Запустить монитор'
-    $ui.ChipMon.Text = 'монитор: остановлен'
+    $ui.BtnMon.Content  = (T 'Запустить монитор')
+    $ui.BtnMon2.Content = (T 'Запустить монитор')
+    $ui.ChipMon.Text = (T 'монитор: остановлен')
     $ui.ChipMon.Foreground = '#7C8694'
     Set-Status 'Монитор остановлен.'
     Write-CgLog 'INFO' 'Монитор остановлен'
@@ -1058,7 +1060,7 @@ function Show-Findings {
     $c = @($app.Findings | Where-Object { $_.Severity -eq 'CRIT' }).Count
     $w = @($app.Findings | Where-Object { $_.Severity -eq 'WARN' }).Count
     $n = @($app.Findings | Where-Object { $_.Severity -eq 'NOTE' }).Count
-    $ui.ScanStats.Text = "критично: $c    внимание: $w    заметки: $n    всего проверок: $($app.Findings.Count)"
+    $ui.ScanStats.Text = (T "критично: $c    внимание: $w    заметки: $n    всего проверок: $($app.Findings.Count)")
     Update-CgFixAllButton
 }
 
@@ -1092,12 +1094,12 @@ function Get-CgFixAllPlan {
 function Update-CgFixAllButton {
     $n = @(Get-CgFixAllPlan).Count
     if ($n) {
-        $ui.BtnFixAll.Content = "Исправить всё ($n)"
+        $ui.BtnFixAll.Content = (T "Исправить всё ($n)")
         $ui.BtnFixAll.IsEnabled = $true
-        $ui.BtnFixAll2.Content = "Исправить всё ($n)"
+        $ui.BtnFixAll2.Content = (T "Исправить всё ($n)")
         $ui.BtnFixAll2.Visibility = 'Visible'
     } else {
-        $ui.BtnFixAll.Content = 'Исправить всё'
+        $ui.BtnFixAll.Content = (T 'Исправить всё')
         $ui.BtnFixAll.IsEnabled = $false
         $ui.BtnFixAll2.Visibility = 'Collapsed'
     }
@@ -1113,15 +1115,15 @@ function Invoke-CgFixAll {
     $items = @()
     foreach ($x in $plan) {
         $what = $x.Fixer.Title
-        $sub = "$($x.Finding.Area): $($x.Finding.Title)"
-        if ($x.Fixer.Id -like '*-all') { $sub = "$($x.Finding.Area): все такие находки разом" }
+        $sub = "$(T $x.Finding.Area): $(T $x.Finding.Title)"
+        if ($x.Fixer.Id -like '*-all') { $sub = "$(T $x.Finding.Area): $(T 'все такие находки разом')" }
         # Подмену запуска на пустышку systray.exe почти всегда делают
         # намеренно — так глушат обновления и телеметрию. Отмечать её
         # за человека значило бы молча включить то, что он выключил.
         $on = $true
         if ($x.Fixer.Id -eq 'ifeo-remove' -and "$($x.Finding.Title)" -like 'Запуск программы заблокирован*') {
             $on = $false
-            $sub += ' — похоже, отключено намеренно; отмечайте, только если это сделали не вы'
+            $sub += (T ' — похоже, отключено намеренно; отмечайте, только если это сделали не вы')
         }
         # Автозапуск. Мёртвую запись (файла уже нет) убираем смело. Живую
         # программу — нет: «из AppData» ещё не значит «вредонос», а убрать
@@ -1130,10 +1132,10 @@ function Invoke-CgFixAll {
         if ($x.Fixer.Id -in @('run-remove', 'task-disable') -and $x.Finding.Target) {
             $file = "$($x.Finding.Target.File)"
             if ($file -and -not (Test-Path -LiteralPath $file)) {
-                $sub += ' — файла уже нет, запись мёртвая'
+                $sub += (T ' — файла уже нет, запись мёртвая')
             } elseif ($x.Finding.Severity -ne 'CRIT') {
                 $on = $false
-                $sub += ' — программа на месте; отмечайте, если она не нужна при старте Windows'
+                $sub += (T ' — программа на месте; отмечайте, если она не нужна при старте Windows')
             }
         }
         $items += [PSCustomObject]@{ Title = $what; Sub = $sub; Checked = $on; Risky = $false }
@@ -1179,16 +1181,16 @@ $ui.BtnSaveReport.Add_Click({
     $dir = Get-CgDir 'reports'
     $f = Join-Path $dir ('scan-{0}.txt' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
     $sb = New-Object System.Text.StringBuilder
-    $null = $sb.AppendLine('CookieGuard — отчёт о проверке')
-    $null = $sb.AppendLine(('{0}   компьютер: {1}   пользователь: {2}' -f (Get-Date -Format 'dd.MM.yyyy HH:mm'), $env:COMPUTERNAME, $env:USERNAME))
+    $null = $sb.AppendLine((T 'CookieGuard — отчёт о проверке'))
+    $null = $sb.AppendLine(((T '{0}   компьютер: {1}   пользователь: {2}') -f (Get-Date -Format 'dd.MM.yyyy HH:mm'), $env:COMPUTERNAME, $env:USERNAME))
     $null = $sb.AppendLine('')
     foreach ($area in ($app.Findings | Group-Object Area)) {
         $null = $sb.AppendLine('=' * 70)
-        $null = $sb.AppendLine('  ' + $area.Name)
+        $null = $sb.AppendLine('  ' + (T $area.Name))
         $null = $sb.AppendLine('=' * 70)
         foreach ($x in ($area.Group | Sort-Object Order)) {
-            $null = $sb.AppendLine(('[{0}] {1}' -f $x.Severity, $x.Title))
-            if ($x.Detail) { foreach ($l in ($x.Detail -split "`n")) { $null = $sb.AppendLine('      ' + $l.TrimEnd()) } }
+            $null = $sb.AppendLine(('[{0}] {1}' -f $x.Severity, (T $x.Title)))
+            if ($x.Detail) { foreach ($l in ((T $x.Detail) -split "`n")) { $null = $sb.AppendLine('      ' + $l.TrimEnd()) } }
             $null = $sb.AppendLine('')
         }
     }
@@ -1268,18 +1270,18 @@ function Show-Procs {
     $src = $app.Procs
     if ($ui.ChkOnlyRisky.IsChecked) { $src = $src | Where-Object { $_.Risk -ge 14 } }
     $ui.GridProc.ItemsSource = @($src | Sort-Object @{ Expression = 'Risk'; Descending = $true }, @{ Expression = 'Name' })
-    $ui.ProcStats.Text = ("всего: {0}    подозрительных: {1}" -f $app.Procs.Count, @($app.Procs | Where-Object { $_.Risk -ge 14 }).Count)
+    $ui.ProcStats.Text = ((T "всего: {0}    подозрительных: {1}") -f $app.Procs.Count, @($app.Procs | Where-Object { $_.Risk -ge 14 }).Count)
 }
 
 function Show-Exts {
     $ui.GridExt.ItemsSource = @($app.Exts | Sort-Object Order, Browser, Name)
     $c = @($app.Exts | Where-Object { $_.Severity -eq 'CRIT' }).Count
-    $ui.ExtStats.Text = ("всего: {0}    с доступом к cookie на всех сайтах: {1}" -f $app.Exts.Count, $c)
+    $ui.ExtStats.Text = ((T "всего: {0}    с доступом к cookie на всех сайтах: {1}") -f $app.Exts.Count, $c)
 }
 
 function Show-Autoruns {
     $ui.GridAuto.ItemsSource = @($app.Autoruns | Sort-Object Order, Kind, Name)
-    $ui.AutoStats.Text = ("записей: {0}    требуют внимания: {1}" -f $app.Autoruns.Count, @($app.Autoruns | Where-Object { $_.Severity -in @('CRIT', 'WARN') }).Count)
+    $ui.AutoStats.Text = ((T "записей: {0}    требуют внимания: {1}") -f $app.Autoruns.Count, @($app.Autoruns | Where-Object { $_.Severity -in @('CRIT', 'WARN') }).Count)
 }
 
 function Show-Runs {
@@ -1289,7 +1291,7 @@ function Show-Runs {
     $src2 = @($app.Runs)
     $from = ''
     if ($src2.Count) { $from = $src2[0].Source }
-    $ui.RunStats.Text = ("записей: {0}    источник: {1}" -f $src2.Count, $from)
+    $ui.RunStats.Text = ((T "записей: {0}    источник: {1}") -f $src2.Count, (T $from))
 }
 
 function Refresh-Procs    { Start-BgTask 'procs' 'Собираю процессы и проверяю подписи...' }
@@ -1303,7 +1305,7 @@ function Refresh-Log {
         $ui.LogBox.Text = (Get-Content -LiteralPath $f -Encoding UTF8 -Tail 500) -join "`r`n"
         $ui.LogBox.ScrollToEnd()
     } else {
-        $ui.LogBox.Text = 'Журнал за сегодня пуст.'
+        $ui.LogBox.Text = (T 'Журнал за сегодня пуст.')
     }
 }
 
@@ -1340,16 +1342,16 @@ function Update-VtStats {
     $key = Get-CgVtKey
     $cache = Get-CgVtCache
     if ($key) {
-        $ui.VtStats.Text = ("ключ задан    в базе вердиктов: {0}" -f $cache.Count)
+        $ui.VtStats.Text = ((T "ключ задан    в базе вердиктов: {0}") -f $cache.Count)
     } else {
-        $ui.VtStats.Text = 'ключ не задан — проверка недоступна'
+        $ui.VtStats.Text = (T 'ключ не задан — проверка недоступна')
     }
 }
 
 function Update-BaseStats {
     $d = Get-CgBaselineDate
-    if ($d) { $ui.BaseStats.Text = ('снят ' + $d.ToString('dd.MM.yyyy HH:mm')) }
-    else { $ui.BaseStats.Text = 'не снят' }
+    if ($d) { $ui.BaseStats.Text = (T ('снят ' + $d.ToString('dd.MM.yyyy HH:mm'))) }
+    else { $ui.BaseStats.Text = (T 'не снят') }
 }
 
 $ui.BtnBaseNew.Add_Click({
@@ -1582,7 +1584,7 @@ $timer.Add_Tick({
     while ($app.MonItems.Count -gt 3000) { $app.MonItems.RemoveAt($app.MonItems.Count - 1) }
 
     if ($sync.Counters) {
-        $ui.MonStats.Text = ("событий: {0}    критично: {1}    внимание: {2}" -f $sync.Counters.Events, $sync.Counters.Crit, $sync.Counters.Warn)
+        $ui.MonStats.Text = ((T "событий: {0}    критично: {1}    внимание: {2}") -f $sync.Counters.Events, $sync.Counters.Crit, $sync.Counters.Warn)
     }
 
     if ($sync.Error) {
@@ -1745,8 +1747,48 @@ $tips = @{
     BtnMonClear    = 'Очистить список событий монитора.'
 }
 foreach ($k in $tips.Keys) {
-    if ($ui[$k]) { $ui[$k].ToolTip = $tips[$k] }
+    if ($ui[$k]) { $ui[$k].ToolTip = (T $tips[$k]) }
 }
+
+# ------------------------------------------------------------
+#  Язык интерфейса
+#
+#  Разметка переводится при загрузке окна, поэтому новый язык
+#  включается перезапуском: выбор сохраняется сразу, а кнопка
+#  «Перезапустить» открывает окно заново. Подсказка о перезапуске
+#  пишется на выбранном языке — его-то человек и читает.
+# ------------------------------------------------------------
+$script:CgSelfPath = $PSCommandPath
+$script:CgLangShown = $script:CgLang
+$ui.CmbLang.SelectedIndex = $(if ($script:CgLang -eq 'en') { 1 } else { 0 })
+$ui.CmbLang.Add_SelectionChanged({
+    $it = $ui.CmbLang.SelectedItem
+    if (-not $it) { return }
+    $lang = [string]$it.Tag
+    try { Set-CgLang $lang } catch { Set-Status "Не удалось сохранить язык: $_"; return }
+    if ($lang -eq $script:CgLangShown) {
+        $ui.BtnLangRestart.Visibility = 'Collapsed'
+        $ui.LangSub.Text = (T 'Новый язык включится после перезапуска окна.')
+    } else {
+        $ui.BtnLangRestart.Visibility = 'Visible'
+        if ($lang -eq 'en') {
+            $ui.BtnLangRestart.Content = 'Restart'
+            $ui.LangSub.Text = 'English will be used after the window restarts.'
+        } else {
+            $ui.BtnLangRestart.Content = 'Перезапустить'
+            $ui.LangSub.Text = 'Русский язык включится после перезапуска окна.'
+        }
+    }
+})
+$ui.BtnLangRestart.Add_Click({
+    try {
+        Start-Process (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -ArgumentList @(
+            '-STA', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', "`"$script:CgSelfPath`"")
+        $win.Close()
+    } catch {
+        Set-Status "Не удалось перезапустить: $_"
+    }
+})
 
 # ============================================================
 #  Новая обвязка окна
@@ -1888,8 +1930,8 @@ function Set-CgNavCollapsed {
     if ($On) { $w = 58 }
     $ui.NavPanel.BeginAnimation([System.Windows.FrameworkElement]::WidthProperty, (New-CgAnim $w 230))
 
-    if ($On) { $ui.BtnNavToggle.ToolTip = 'Развернуть столбец разделов' }
-    else     { $ui.BtnNavToggle.ToolTip = 'Свернуть столбец разделов' }
+    if ($On) { $ui.BtnNavToggle.ToolTip = (T 'Развернуть столбец разделов') }
+    else     { $ui.BtnNavToggle.ToolTip = (T 'Свернуть столбец разделов') }
 }
 
 $ui.BtnNavToggle.Add_Click({ Set-CgNavCollapsed (-not $script:CgNavCollapsed) })
@@ -1960,7 +2002,8 @@ function Update-CgSearch {
     if ($q.Length -lt 2) { $ui.SearchPop.IsOpen = $false; return }
 
     foreach ($pg in $script:CgSearchPages) {
-        if ($pg.Name -like "*$q*") { Add-CgSearchResult $pg.Name 'раздел окна' $pg.Key $null }
+        $pn = T $pg.Name
+        if ($pn -like "*$q*") { Add-CgSearchResult $pn (T 'раздел окна') $pg.Key $null }
     }
 
     $sets = @(
@@ -1977,20 +2020,20 @@ function Update-CgSearch {
         foreach ($r in @($st.Items)) {
             if ($n -ge 40) { break }
             $title = ''
-            if ($r.PSObject.Properties['Title'] -and $r.Title) { $title = [string]$r.Title }
-            elseif ($r.PSObject.Properties['Name']) { $title = [string]$r.Name }
+            if ($r.PSObject.Properties['Title'] -and $r.Title) { $title = T ([string]$r.Title) }
+            elseif ($r.PSObject.Properties['Name']) { $title = T ([string]$r.Name) }
             $path = ''
             if ($r.PSObject.Properties['Path']) { $path = [string]$r.Path }
             if (($title -notlike "*$q*") -and ($path -notlike "*$q*")) { continue }
-            $sub = "$($st.Label)"
-            if ($path) { $sub = "$($st.Label) — $path" }
+            $sub = T "$($st.Label)"
+            if ($path) { $sub = "$(T $st.Label) — $path" }
             Add-CgSearchResult $title $sub $st.Key $r
             $n++
         }
     }
 
     if (-not $ui.SearchList.Items.Count) {
-        Add-CgSearchResult 'Ничего не найдено' 'Ищем по разделам и по уже собранным таблицам' '' $null
+        Add-CgSearchResult (T 'Ничего не найдено') (T 'Ищем по разделам и по уже собранным таблицам') '' $null
     }
     $ui.SearchPop.IsOpen = $true
 }
@@ -2056,13 +2099,13 @@ $ui.BtnDiag.Add_Click({ Show-CgDiagnosis })
 $script:CgPendingUpdate = $null
 
 function Update-CgVersionText {
-    $ui.UpdWhere.Text = ("программа: {0}`nданные:    {1}`nисточник:  github.com/{2}/{3}, ветка {4}" -f
+    $ui.UpdWhere.Text = ((T "программа: {0}`nданные:    {1}`nисточник:  github.com/{2}/{3}, ветка {4}") -f
         (Get-CgRoot), (Get-CgDataRoot), $script:CgRepoOwner, $script:CgRepoName, $script:CgRepoBranch)
     $cur = Get-CgInstalledCommit
     if ($cur) {
-        $ui.UpdStats.Text = ('установлено: {0}' -f $cur.Substring(0, [Math]::Min(7, $cur.Length)))
+        $ui.UpdStats.Text = ((T 'установлено: {0}') -f $cur.Substring(0, [Math]::Min(7, $cur.Length)))
     } else {
-        $ui.UpdStats.Text = 'версия не отмечена — нажмите «Проверить»'
+        $ui.UpdStats.Text = (T 'версия не отмечена — нажмите «Проверить»')
     }
     $ui.UpdStats.Foreground = '#7C8694'
     $script:CgPendingUpdate = $null
@@ -2074,7 +2117,7 @@ $ui.BtnUpdCheck.Add_Click({
     Set-Busy $false
 
     if (-not $r.Ok) {
-        $ui.UpdStats.Text = 'проверить не удалось'
+        $ui.UpdStats.Text = (T 'проверить не удалось')
         $ui.UpdStats.Foreground = '#FFB340'
         $null = Show-CgDialog -Title 'Не удалось проверить обновления' -Text $r.Error `
             -Subject "$script:CgRepoOwner/$script:CgRepoName ($script:CgRepoBranch)" -Kind 'warn'
@@ -2082,7 +2125,7 @@ $ui.BtnUpdCheck.Add_Click({
     }
 
     if (-not $r.HasUpdate) {
-        $ui.UpdStats.Text = ('установлена последняя версия: {0}' -f $r.Latest.Short)
+        $ui.UpdStats.Text = ((T 'установлена последняя версия: {0}') -f $r.Latest.Short)
         $ui.UpdStats.Foreground = '#4ADE80'
         Set-Status 'Обновлений нет — «Обновить» поставит ту же версию заново'
         return
@@ -2091,7 +2134,7 @@ $ui.BtnUpdCheck.Add_Click({
     $script:CgPendingUpdate = $r.Latest
     $when = ''
     if ($r.Latest.Date) { $when = $r.Latest.Date.ToLocalTime().ToString('dd.MM.yyyy HH:mm') }
-    $ui.UpdStats.Text = ('есть обновление: {0} от {1}' -f $r.Latest.Short, $when)
+    $ui.UpdStats.Text = ((T 'есть обновление: {0} от {1}') -f $r.Latest.Short, $when)
     $ui.UpdStats.Foreground = '#3B9EFF'
     Set-Status ('Доступно обновление: ' + $r.Latest.Message)
 })
@@ -2185,8 +2228,8 @@ function Sync-CgToggles {
     try {
         $on = [bool](Test-CgAuditEnabled)
         $ui.TglAudit.IsChecked = $on
-        if ($on) { $ui.AuditSub.Text = 'Windows записывает, какая программа открывает базу cookie и паролей.' }
-        else { $ui.AuditSub.Text = 'Выключен: не видно, кто брал cookie. Это главное, ради чего программа нужна.' }
+        if ($on) { $ui.AuditSub.Text = (T 'Windows записывает, какая программа открывает базу cookie и паролей.') }
+        else { $ui.AuditSub.Text = (T 'Выключен: не видно, кто брал cookie. Это главное, ради чего программа нужна.') }
 
         $t = Get-ScheduledTask -TaskName 'CookieGuard Watcher' -ErrorAction SilentlyContinue
         $ui.TglGuard.IsChecked = [bool]$t
@@ -2298,15 +2341,15 @@ function Invoke-CgLateInit {
     $ui.CmbDns.Items.Clear()
     foreach ($p in (Get-CgDnsProfiles)) {
         $it = New-Object System.Windows.Controls.ComboBoxItem
-        $it.Content = $p.Name
+        $it.Content = (T $p.Name)
         $it.Tag = $p
-        $it.ToolTip = $p.Note
+        $it.ToolTip = (T $p.Note)
         $null = $ui.CmbDns.Items.Add($it)
     }
     $ui.CmbDns.SelectedIndex = 0
     Update-DnsStats
     Refresh-Log
-    $ui.ChipMon.Text = 'монитор: остановлен'
+    $ui.ChipMon.Text = (T 'монитор: остановлен')
     if (-not $app.IsAdmin) {
         Set-Status 'Запущено без прав администратора. Включение аудита запросит повышение прав отдельно.'
     } else {

@@ -99,6 +99,12 @@ function Show-CgDialog {
         [int]$DangerButton = -1
     )
 
+    # Перевод — только того, что видно. Номера кнопок остаются
+    # прежними: возвращается номер, а не надпись.
+    $Title = T $Title
+    $Text = T $Text
+    $Subject = T $Subject
+
     $k = $script:CgDialogKinds[$Kind]
     $xaml = $script:CgDialogXaml.Replace('&#xE946;', $k[0])
     $w = New-CgWindow $xaml
@@ -120,7 +126,7 @@ function Show-CgDialog {
     # Buttons[0] оказалась слева и получила признак «по умолчанию».
     for ($i = $Buttons.Count - 1; $i -ge 0; $i--) {
         $b = New-Object System.Windows.Controls.Button
-        $b.Content = $Buttons[$i]
+        $b.Content = T $Buttons[$i]
         $b.MinWidth = 104
         $b.Margin = '8,0,0,0'
         if ($i -eq 0) {
@@ -207,6 +213,12 @@ function Show-CgPrompt {
         [string]$OkText = 'Сохранить',
         [switch]$Password
     )
+    # $Default не переводим: это значение поля (ключ, токен), а не надпись.
+    $Title = T $Title
+    $Text = T $Text
+    $Subject = T $Subject
+    $Hint = T $Hint
+    $OkText = T $OkText
     $w = New-CgWindow $script:CgPromptXaml
     $w.FindName('PrTitle').Text = $Title
     $tb = $w.FindName('PrText')
@@ -334,8 +346,8 @@ function Show-CgTrustDialog {
     param([string]$Subject, $Options, [string]$DefaultNote = 'моя программа, разобрался')
 
     $w = New-CgWindow $script:CgTrustXaml
-    $w.FindName('TrSubject').Text = $Subject
-    $w.FindName('TrNote').Text = $DefaultNote
+    $w.FindName('TrSubject').Text = T $Subject
+    $w.FindName('TrNote').Text = T $DefaultNote
     $host_ = $w.FindName('TrScopes')
     $style = $w.FindResource('ScopeCard')
 
@@ -347,13 +359,13 @@ function Show-CgTrustDialog {
 
         $sp = New-Object System.Windows.Controls.StackPanel
         $t1 = New-Object System.Windows.Controls.TextBlock
-        $t1.Text = $o.Title
+        $t1.Text = T "$($o.Title)"
         $t1.FontSize = 13.5
         $t1.FontWeight = 'SemiBold'
         $t1.Foreground = '#ECEFF4'
         $t1.TextWrapping = 'Wrap'
         $t2 = New-Object System.Windows.Controls.TextBlock
-        $t2.Text = $o.Hint
+        $t2.Text = T "$($o.Hint)"
         $t2.FontSize = 12
         $t2.Margin = '0,4,0,0'
         $t2.TextWrapping = 'Wrap'
@@ -446,6 +458,9 @@ $script:CgChecklistXaml = @'
 # номера отмеченных строк или $null, если окно закрыли.
 function Show-CgChecklistDialog {
     param([string]$Title, [string]$Text = '', $Items, [string]$OkText = 'Исправить')
+    $Title = T $Title
+    $Text = T $Text
+    $OkText = T $OkText
     $w = New-CgWindow $script:CgChecklistXaml
     $w.FindName('ClTitle').Text = $Title
     $tb = $w.FindName('ClText')
@@ -457,7 +472,7 @@ function Show-CgChecklistDialog {
     $boxes = New-Object System.Collections.ArrayList
     $upd = {
         $n = @($boxes | Where-Object { $_.IsChecked }).Count
-        $count.Text = "отмечено: $n из $($boxes.Count)"
+        $count.Text = T "отмечено: $n из $($boxes.Count)"
         $w.FindName('ClOk').IsEnabled = ($n -gt 0)
     }.GetNewClosure()
 
@@ -470,13 +485,13 @@ function Show-CgChecklistDialog {
         $cb.Tag = $i
         $sp = New-Object System.Windows.Controls.StackPanel
         $t1 = New-Object System.Windows.Controls.TextBlock
-        $t1.Text = "$($it.Title)"
+        $t1.Text = T "$($it.Title)"
         $t1.TextWrapping = 'Wrap'
         $t1.Foreground = $(if ($it.Risky) { '#FFB340' } else { '#ECEFF4' })
         $null = $sp.Children.Add($t1)
         if ($it.Sub) {
             $t2 = New-Object System.Windows.Controls.TextBlock
-            $t2.Text = "$($it.Sub)"
+            $t2.Text = T "$($it.Sub)"
             $t2.FontSize = 11.5
             $t2.TextWrapping = 'Wrap'
             $t2.Margin = '0,2,0,0'

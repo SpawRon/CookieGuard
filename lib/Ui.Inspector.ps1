@@ -146,7 +146,7 @@ function New-CgTreeItem {
     $dot.Fill = (New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString((Get-CgNodeBrush $Node.Severity))))
 
     $tb = New-Object System.Windows.Controls.TextBlock
-    $tb.Text = "$($Node.Title)"
+    $tb.Text = T "$($Node.Title)"
     $tb.VerticalAlignment = 'Center'
     $tb.TextTrimming = 'CharacterEllipsis'
     if ($Node.Severity -in @('CRIT', 'WARN')) { $tb.FontWeight = 'SemiBold' }
@@ -174,9 +174,9 @@ function Show-CgInspector {
     $w = New-CgWindow $script:CgInspectorXaml
     if ($Owner -and $Owner.IsVisible) { $w.Owner = $Owner }
 
-    $w.FindName('InsSubject').Text = "$($Finding.Title)"
+    $w.FindName('InsSubject').Text = T "$($Finding.Title)"
     $bad = @($flat | Where-Object { $_.Severity -in @('CRIT', 'WARN') }).Count
-    $w.FindName('InsCount').Text = ('Узлов в карте: {0}, из них требующих внимания: {1}' -f $flat.Count, $bad)
+    $w.FindName('InsCount').Text = ((T 'Узлов в карте: {0}, из них требующих внимания: {1}') -f $flat.Count, $bad)
 
     $tree = $w.FindName('InsTree')
     $null = $tree.Items.Add((New-CgTreeItem $root 0))
@@ -187,9 +187,9 @@ function Show-CgInspector {
         $it = $e.NewValue
         if (-not $it -or -not $it.Tag) { return }
         $n = $it.Tag
-        $txt = "$($n.Title)"
+        $txt = T "$($n.Title)"
         if ($n.Path)   { $txt += "`n`n$($n.Path)" }
-        if ($n.Detail) { $txt += "`n`n$($n.Detail)" }
+        if ($n.Detail) { $txt += "`n`n" + (T "$($n.Detail)") }
         $detail.Text = $txt
     }.GetNewClosure())
 
@@ -197,14 +197,14 @@ function Show-CgInspector {
     # приложить к письму или сохранить рядом с отчётом.
     $asText = {
         $sb = New-Object System.Text.StringBuilder
-        $null = $sb.AppendLine("Разбор находки: $($Finding.Title)")
+        $null = $sb.AppendLine((T 'Разбор находки: {0}') -f (T "$($Finding.Title)"))
         $null = $sb.AppendLine((Get-Date -Format 'dd.MM.yyyy HH:mm'))
         $null = $sb.AppendLine('')
         foreach ($r in $flat) {
             $mark = '  '
             if ($r.Severity -eq 'CRIT') { $mark = '!!' }
             elseif ($r.Severity -eq 'WARN') { $mark = ' !' }
-            $null = $sb.AppendLine("$mark $($r.Indent)$($r.Title)")
+            $null = $sb.AppendLine("$mark $($r.Indent)" + (T "$($r.Title)"))
             if ($r.Path) { $null = $sb.AppendLine("   $($r.Indent)    $($r.Path)") }
         }
         return $sb.ToString()
@@ -212,7 +212,7 @@ function Show-CgInspector {
 
     $w.FindName('InsCopy').Add_Click({
         try { Set-Clipboard -Value (& $asText) } catch { }
-        $w.FindName('InsHint').Text = 'Карта скопирована в буфер обмена.'
+        $w.FindName('InsHint').Text = T 'Карта скопирована в буфер обмена.'
     }.GetNewClosure())
 
     $w.FindName('InsExport').Add_Click({
@@ -220,10 +220,10 @@ function Show-CgInspector {
             $dir = Get-CgDir 'reports'
             $p = Join-Path $dir ('inspect-{0}.txt' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
             [IO.File]::WriteAllText($p, (& $asText), (New-Object Text.UTF8Encoding($true)))
-            $w.FindName('InsHint').Text = "Сохранено: $p"
+            $w.FindName('InsHint').Text = (T 'Сохранено: {0}') -f $p
             Write-CgLog 'INFO' ("Разбор сохранён: $p")
         } catch {
-            $w.FindName('InsHint').Text = "Не удалось сохранить: $($_.Exception.Message)"
+            $w.FindName('InsHint').Text = (T 'Не удалось сохранить: {0}') -f $_.Exception.Message
         }
     }.GetNewClosure())
 
