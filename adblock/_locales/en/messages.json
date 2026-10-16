@@ -1,0 +1,137 @@
+{
+  "extName": {
+    "message": "CookieGuard: ad blocker"
+  },
+  "extDesc": {
+    "message": "CookieGuard's own ad blocker. The browser itself blocks requests; the extension sends nothing anywhere."
+  },
+  "popupHere": {
+    "message": "On this site"
+  },
+  "popupOn": {
+    "message": "ads hidden"
+  },
+  "popupOff": {
+    "message": "blocking is off"
+  },
+  "popupDisable": {
+    "message": "Turn off here"
+  },
+  "popupEnable": {
+    "message": "Turn on here"
+  },
+  "popupSettings": {
+    "message": "Settings"
+  },
+  "popupReloadHint": {
+    "message": "Reload the page for the change to take effect."
+  },
+  "popupReload": {
+    "message": "Reload page"
+  },
+  "popupBlocked": {
+    "message": "blocked on this tab: $n$",
+    "placeholders": {
+      "n": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupLists": {
+    "message": "lists from $a$ · rules: $b$ · hiding: $c$",
+    "placeholders": {
+      "a": {
+        "content": "$1"
+      },
+      "b": {
+        "content": "$2"
+      },
+      "c": {
+        "content": "$3"
+      }
+    }
+  },
+  "popupNoLists": {
+    "message": "built-in rules only — lists are loaded from CookieGuard"
+  },
+  "optTitle": {
+    "message": "Ad blocker"
+  },
+  "optLead": {
+    "message": "The browser itself cuts network ads using this extension's rules; the extension never sees your requests. On pages it only hides ad blocks, and on YouTube it strips ads from the video description."
+  },
+  "optWhatH": {
+    "message": "What is active"
+  },
+  "optListsOn": {
+    "message": "Lists from $a$: $b$ network rules, $c$ hiding rules. Sources: $d$.",
+    "placeholders": {
+      "a": {
+        "content": "$1"
+      },
+      "b": {
+        "content": "$2"
+      },
+      "c": {
+        "content": "$3"
+      },
+      "d": {
+        "content": "$4"
+      }
+    }
+  },
+  "optListsOff": {
+    "message": "Built-in rules only: about a hundred ad networks and major sites. To add EasyList and RuAdList, press \"Update lists\" in CookieGuard → Protection → Ad blocker."
+  },
+  "optListsHint": {
+    "message": "CookieGuard downloads the lists and converts them into rules on this computer; only addresses and CSS selectors are taken from them, never code."
+  },
+  "optYt": {
+    "message": "Ads in YouTube videos"
+  },
+  "optYtHint": {
+    "message": "Strip ads from YouTube's response and skip anything that slips through. If YouTube starts complaining about the blocker, turn this off and reload."
+  },
+  "optAllowH": {
+    "message": "Allowed sites"
+  },
+  "optAllowPh": {
+    "message": "example.com"
+  },
+  "optAllowHint": {
+    "message": "One site per line. Nothing is blocked there — neither requests nor elements."
+  },
+  "optBlockH": {
+    "message": "Your own domains to block"
+  },
+  "optBlockPh": {
+    "message": "ads.example.com"
+  },
+  "optBlockHint": {
+    "message": "One per line; subdomains included. The domain's own page still opens; what other sites load from it is blocked."
+  },
+  "optCssH": {
+    "message": "Your own hiding rules"
+  },
+  "optCssPh": {
+    "message": "example.com##.promo-banner"
+  },
+  "optCssHint": {
+    "message": "As in AdBlock: \"site##selector\" for one site, \"##selector\" everywhere."
+  },
+  "optPrivacyH": {
+    "message": "What the extension can and cannot do"
+  },
+  "optPrivacy": {
+    "message": "Permissions: declarativeNetRequest (the browser blocks by rules itself), storage (these settings), activeTab (the tab address, only when you click the icon). No webRequest, cookies or history. The extension pages' security policy (connect-src 'self') forbids any network requests. All code is in the extension folder and can be read."
+  },
+  "optSave": {
+    "message": "Save"
+  },
+  "optReload": {
+    "message": "Reload lists"
+  },
+  "optSaved": {
+    "message": "Saved"
+  }
+}

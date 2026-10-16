@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>CookieGuard AdBlock</title>
+  <link rel="stylesheet" href="ui.css">
+  <style>
+    body { max-width: 760px; margin: 0 auto; padding: 32px 24px 48px; }
+    .kicker { font: 11px "Bahnschrift", sans-serif; color: var(--muted); letter-spacing: .06em; }
+    h1 { font-size: 26px; font-weight: 600; margin: 6px 0 6px; }
+    .lead { color: var(--dim); max-width: 620px; }
+    .hint { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+    .bar { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 14px 0; margin-top: 24px; }
+    #saved { color: var(--ok); opacity: 0; transition: opacity .2s; }
+  </style>
+</head>
+<body>
+  <div class="kicker">COOKIEGUARD</div>
+  <h1 data-i18n="optTitle"></h1>
+  <p class="lead" data-i18n="optLead"></p>
+
+  <h2 data-i18n="optWhatH"></h2>
+  <div class="slab">
+    <div class="mono" id="lists"></div>
+    <p class="hint" data-i18n="optListsHint"></p>
+  </div>
+  <div class="slab">
+    <label class="switch"><input type="checkbox" id="yt"><span data-i18n="optYt"></span></label>
+    <p class="hint" data-i18n="optYtHint"></p>
+  </div>
+
+  <h2 data-i18n="optAllowH"></h2>
+  <textarea id="allow" data-i18n-ph="optAllowPh"></textarea>
+  <p class="hint" data-i18n="optAllowHint"></p>
+
+  <h2 data-i18n="optBlockH"></h2>
+  <textarea id="domains" data-i18n-ph="optBlockPh"></textarea>
+  <p class="hint" data-i18n="optBlockHint"></p>
+
+  <h2 data-i18n="optCssH"></h2>
+  <textarea id="css" data-i18n-ph="optCssPh"></textarea>
+  <p class="hint" data-i18n="optCssHint"></p>
+
+  <h2 data-i18n="optPrivacyH"></h2>
+  <p class="hint" style="margin-top:0" data-i18n="optPrivacy"></p>
+
+  <div class="bar row">
+    <button id="save" class="primary" data-i18n="optSave"></button>
+    <button id="reloadExt" class="ghost" data-i18n="optReload"></button>
+    <span id="saved" data-i18n="optSaved"></span>
+  </div>
+  <script src="i18n.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

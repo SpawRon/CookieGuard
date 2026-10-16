@@ -574,7 +574,7 @@ $script:CgMainXaml = @'
                     <TextBlock x:Name="UpdWhere" Text="" Style="{StaticResource Stat}" FontSize="11" TextWrapping="Wrap"
                                LineHeight="17" Margin="0,6,0,0"/>
                   </StackPanel>
-                  <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
+                  <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
                     <Button x:Name="BtnUpdCheck"   Content="Проверить"/>
                     <Button x:Name="BtnUpdInstall" Content="Обновить" Style="{StaticResource Primary}"/>
                     <Button x:Name="BtnUpdToken"   Content="Ключ GitHub" Style="{StaticResource Ghost}" Margin="0"/>
@@ -600,6 +600,27 @@ $script:CgMainXaml = @'
                       <ComboBoxItem Content="English" Tag="en"/>
                     </ComboBox>
                     <Button x:Name="BtnLangRestart" Content="Перезапустить" Style="{StaticResource Primary}" Margin="8,0,0,0" Visibility="Collapsed"/>
+                  </StackPanel>
+                </Grid>
+              </Border>
+
+              <TextBlock Text="БРАУЗЕР" Style="{StaticResource GroupLabel}"/>
+
+              <!-- Свой блокировщик рекламы: расширение из папки adblock.
+                   Браузер подключает его только руками человека — кнопка
+                   готовит всё и открывает нужную страницу. -->
+              <Border Style="{StaticResource CardRow}" Margin="0,0,0,26">
+                <Grid>
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*" MinWidth="200"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xEA18;" Style="{StaticResource SettingIconGlyph}"/></Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="Блокировщик рекламы" Style="{StaticResource SettingName}"/>
+                    <TextBlock x:Name="AdStats" Text="" Style="{StaticResource Sub}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
+                    <Button x:Name="BtnAdInstall" Content="Подключить к браузеру" Style="{StaticResource Primary}"/>
+                    <Button x:Name="BtnAdLists"   Content="Обновить списки"/>
+                    <Button x:Name="BtnAdFolder"  Content="Папка" Style="{StaticResource Ghost}" Margin="0"/>
                   </StackPanel>
                 </Grid>
               </Border>

@@ -1,0 +1,46 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "requestDomains": [
+        "doubleclick.net", "googlesyndication.com", "googleadservices.com", "googletagservices.com",
+        "adservice.google.com", "adservice.google.ru", "adservice.google.de",
+        "adnxs.com", "adsrvr.org", "rubiconproject.com", "pubmatic.com", "openx.net", "casalemedia.com",
+        "indexww.com", "criteo.com", "criteo.net", "taboola.com", "outbrain.com", "amazon-adsystem.com",
+        "media.net", "adform.net", "smartadserver.com", "33across.com", "sharethrough.com", "triplelift.com",
+        "yieldmo.com", "teads.tv", "moatads.com", "adsafeprotected.com", "bidswitch.net", "contextweb.com",
+        "sovrn.com", "lijit.com", "adroll.com", "zemanta.com", "revcontent.com", "mgid.com", "zergnet.com",
+        "gumgum.com", "kargo.com", "undertone.com", "unrulymedia.com", "seedtag.com", "adkernel.com",
+        "onetag-sys.com", "rtbhouse.com", "creativecdn.com", "emxdgt.com", "adition.com", "spotxchange.com",
+        "spotx.tv", "springserve.com", "smartyads.com", "yieldlab.net", "adhese.com", "improvedigital.com",
+        "360yield.com", "admanmedia.com", "adtelligent.com", "e-planning.net", "districtm.io",
+        "propellerads.com", "propellerclick.com", "onclickads.net", "popads.net", "popcash.net",
+        "exoclick.com", "exosrv.com", "exdynsrv.com", "juicyads.com", "trafficjunky.net", "trafficjunky.com",
+        "adsterra.com", "clickadu.com", "hilltopads.net", "a-ads.com", "bidvertiser.com", "adcash.com",
+        "ad-maven.com", "adsco.re", "clickio.com", "clickiocdn.com", "adwile.com",
+        "adfox.ru", "an.yandex.ru", "yandexadexchange.net", "awaps.yandex.net", "adriver.ru",
+        "ad.mail.ru", "ads.vk.com", "ad.vk.com", "relap.io", "smi2.ru", "smi2.net",
+        "lentainform.com", "marketgid.com", "kadam.net", "directadvert.ru", "adsniper.ru", "hybrid.ai",
+        "otm-r.com", "betweendigital.com", "buzzoola.com", "adhigh.net", "advertur.ru", "begun.ru"
+      ]
+    }
+  },
+  {
+    "id": 2, "priority": 1, "action": { "type": "block" },
+    "condition": { "urlFilter": "||youtube.com/pagead/", "resourceTypes": ["xmlhttprequest", "image", "script", "sub_frame", "ping", "other"] }
+  },
+  {
+    "id": 3, "priority": 1, "action": { "type": "block" },
+    "condition": { "urlFilter": "||youtube.com/api/stats/ads", "resourceTypes": ["xmlhttprequest", "image", "ping", "other"] }
+  },
+  {
+    "id": 4, "priority": 1, "action": { "type": "block" },
+    "condition": { "urlFilter": "||youtube.com/pcs/activeview", "resourceTypes": ["xmlhttprequest", "image", "ping", "other"] }
+  },
+  {
+    "id": 5, "priority": 1, "action": { "type": "block" },
+    "condition": { "urlFilter": "||yandex.ru/ads/", "resourceTypes": ["xmlhttprequest", "image", "script", "sub_frame", "ping", "other"] }
+  }
+]

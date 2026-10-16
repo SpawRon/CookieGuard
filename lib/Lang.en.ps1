@@ -1796,4 +1796,39 @@ PlayerDebugMode станет 0.	PlayerDebugMode will be set to 0.
 Если он приватный — нужен ключ доступа GitHub.	If it is private, a GitHub access token is required.
 Ключ доступа GitHub не принят.	The GitHub access token was not accepted.
 Задайте его заново.	Set it again.
+# ---- блокировщик рекламы ----
+Блокировщик рекламы	Ad blocker
+Подключить к браузеру	Add to browser
+Обновить списки	Update lists
+Подключить свой блокировщик рекламы CookieGuard к Chrome, Edge или Brave. Запросы к рекламе режет сам браузер; расширению запрещено ходить в сеть.	Add CookieGuard's own ad blocker to Chrome, Edge or Brave. The browser itself cuts ad requests; the extension is not allowed to use the network.
+Скачать свежие EasyList и RuAdList и перевести их в правила браузера. Из списков берутся только адреса и CSS-селекторы.	Download fresh EasyList and RuAdList and convert them into browser rules. Only addresses and CSS selectors are taken from the lists.
+Открыть папку расширения: весь его код там, его можно прочитать.	Open the extension folder: all its code is there and can be read.
+подключён: {0}	added to: {0}
+файлы готовы, в браузер ещё не подключён	files ready, not added to a browser yet
+не подключён — реклама в браузере не режется	not added — ads in the browser are not blocked
+списки от {0}: правил {1}, скрытий {2}	lists from {0}: {1} rules, {2} hiding rules
+только встроенные правила	built-in rules only
+Браузер не найден	Browser not found
+Не нашёл Chrome, Edge или Brave. Откройте страницу расширений сами и загрузите папку, путь к ней — ниже.	Chrome, Edge or Brave was not found. Open the extensions page yourself and load the folder shown below.
+Осталось три щелчка в {0}	Three clicks left in {0}
+1. На открывшейся странице расширений включите «Режим разработчика» (переключатель справа вверху или слева внизу).	1. On the extensions page that opened, turn on "Developer mode" (the switch at the top right or bottom left).
+2. Нажмите «Загрузить распакованное» и вставьте путь клавишами Ctrl+V — он уже в буфере обмена.	2. Click "Load unpacked" and paste the path with Ctrl+V — it is already on the clipboard.
+3. Готово: значок CookieGuard появится у адресной строки. В нём — выключить блокировку на сайте и настройки.	3. Done: the CookieGuard icon appears next to the address bar. It lets you turn blocking off for a site and open the settings.
+Не удалось подготовить расширение	Could not prepare the extension
+Нет папки расширения: {0}	Extension folder not found: {0}
+В какой браузер подключить блокировщик?	Which browser should get the blocker?
+Для каждого браузера это делается отдельно; потом можно нажать кнопку ещё раз и подключить в следующий.	This is done separately for each browser; press the button again later to add it to the next one.
+Скачать списки рекламы?	Download ad lists?
+Встроенные правила режут около сотни рекламных сетей. Списки EasyList и RuAdList добавят ещё десятки тысяч — в том числе российские сайты. Скачиваются с easylist.to и adblockplus.org; из них берутся только адреса и CSS-селекторы, никакой код.	The built-in rules block about a hundred ad networks. EasyList and RuAdList add tens of thousands more, including Russian sites. They are downloaded from easylist.to and adblockplus.org; only addresses and CSS selectors are taken from them, never code.
+Скачать и подключить	Download and add
+Только встроенные	Built-in only
+Скачиваю и перевожу списки рекламы...	Downloading and converting ad lists...
+скачиваю {0}...	downloading {0}...
+перевожу {0} строк в правила браузера...	converting {0} lines into browser rules...
+Списки {0}: доменов {1}, правил {2}, правил скрытия {3}	Lists {0}: {1} domains, {2} rules, {3} hiding rules
+Ни один список не скачался. Встроенные правила продолжают работать.	No list could be downloaded. The built-in rules keep working.
+Списки обновлены	Lists updated
+Чтобы браузер их подхватил, нажмите «Перечитать списки» в настройках расширения (значок CookieGuard → Настройки) или перезапустите браузер.	For the browser to pick them up, press "Reload lists" in the extension settings (CookieGuard icon → Settings) or restart the browser.
+Списки не обновлены	Lists not updated
+Не удалось.	Failed.
 '@

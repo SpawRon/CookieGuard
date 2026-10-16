@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="ui.css">
+  <style>
+    body { width: 320px; }
+    header { padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--nav); }
+    main { padding: 14px 16px 16px; }
+    #host { margin-top: 4px; word-break: break-all; }
+    #state { font: 600 22px "Bahnschrift", "Segoe UI", sans-serif; margin: 6px 0 2px; }
+    .actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+    #reloadHint { display: none; margin-top: 10px; color: var(--warn); }
+    footer { border-top: 1px solid var(--line); padding: 10px 16px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 data-i18n="extName"></h1>
+    <div id="host" class="mono"></div>
+  </header>
+  <main>
+    <div class="muted" data-i18n="popupHere"></div>
+    <div id="state"></div>
+    <div id="count" class="muted"></div>
+    <div class="actions">
+      <button id="toggle" class="primary"></button>
+      <button id="opts" class="ghost" data-i18n="popupSettings"></button>
+    </div>
+    <div id="reloadHint">
+      <span data-i18n="popupReloadHint"></span>
+      <button id="reload" style="margin-top:8px" data-i18n="popupReload"></button>
+    </div>
+  </main>
+  <footer class="mono" id="lists"></footer>
+  <script src="i18n.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

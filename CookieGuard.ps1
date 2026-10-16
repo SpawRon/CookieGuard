@@ -23,6 +23,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 . (Join-Path $PSScriptRoot 'lib\Update.ps1')
 . (Join-Path $PSScriptRoot 'lib\Remedy.ps1')
 . (Join-Path $PSScriptRoot 'lib\Inspect.ps1')
+. (Join-Path $PSScriptRoot 'lib\AdBlock.ps1')
 . (Join-Path $PSScriptRoot 'lib\Ui.Theme.ps1')
 . (Join-Path $PSScriptRoot 'lib\Ui.Dialogs.ps1')
 . (Join-Path $PSScriptRoot 'lib\Ui.Actions.ps1')
@@ -87,7 +88,8 @@ foreach ($n in @('ChipAdmin','ChipAudit','ChipMon','BtnScan','BtnMon','Cards','B
                  'HeroBarCrit','HeroBarWarn','HeroBarRest',
                  'BtnFixAll','BtnFixAll2','BtnExtVerify',
                  'SbAddFiles','SbAddFolder','SbClear','SbDeep','SbCheck','SbDropHint','SbListBox','SbGrid','SbStatus','SbProgress',
-                 'CmbLang','LangSub','BtnLangRestart')) {
+                 'CmbLang','LangSub','BtnLangRestart',
+                 'AdStats','BtnAdInstall','BtnAdLists','BtnAdFolder')) {
     $ui[$n] = $win.FindName($n)
 }
 
@@ -1212,7 +1214,12 @@ $bgScript = {
         . (Join-Path $sync.Root 'lib\Trust.ps1')
         . (Join-Path $sync.Root 'lib\VirusTotal.ps1')
         . (Join-Path $sync.Root 'lib\Baseline.ps1')
+        . (Join-Path $sync.Root 'lib\AdBlock.ps1')
         switch ($kind) {
+            'adlists' {
+                $sync.AdInfo = Update-CgAdBlockLists -Progress { param($t) $sync.ScanStep = $t }
+                $sync.BgResult = @()
+            }
             'basenew'  {
                 $b = New-CgBaselineData -Progress { param($t) $sync.ScanStep = $t }
                 $null = Save-CgBaseline $b
@@ -1373,6 +1380,82 @@ $ui.BtnBaseDiff.Add_Click({
 })
 
 $ui.BtnProcAudit2.Add_Click({ $ui.BtnProcAudit.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent))) })
+
+# ------------------------------------------------------------
+#  Блокировщик рекламы
+#
+#  Подключить распакованное расширение может только человек: так
+#  устроена защита браузера, и обходить её инструмент безопасности
+#  не будет. Программа делает всё остальное — кладёт файлы, качает
+#  списки, открывает нужную страницу и кладёт путь в буфер обмена.
+# ------------------------------------------------------------
+$script:CgAdOpenAfter = $null
+
+function Update-CgAdStats {
+    $st = Get-CgAdBlockStatus
+    $parts = @()
+    if (@($st.LoadedIn).Count) { $parts += ('подключён: {0}' -f (@($st.LoadedIn) -join ', ')) }
+    elseif ($st.Copied) { $parts += 'файлы готовы, в браузер ещё не подключён' }
+    else { $parts += 'не подключён — реклама в браузере не режется' }
+    if ($st.Lists) { $parts += ('списки от {0}: правил {1}, скрытий {2}' -f $st.Lists, $st.Network, $st.Cosmetic) }
+    elseif ($st.Copied) { $parts += 'только встроенные правила' }
+    $ui.AdStats.Text = ((@($parts) | ForEach-Object { $x = "$(T $_)"; $x.Substring(0, 1).ToUpper() + $x.Substring(1) }) -join '. ') + '.'
+    if (@($st.LoadedIn).Count) { $ui.AdStats.Foreground = '#4ADE80' } else { $ui.AdStats.Foreground = '#7C8694' }
+}
+
+function Open-CgAdBlockSteps {
+    param([string]$Browser)
+    $r = Open-CgAdBlockInBrowser $Browser
+    if (-not $r.Ok) {
+        $null = Show-CgDialog -Title 'Браузер не найден' -Kind 'warn' `
+            -Text 'Не нашёл Chrome, Edge или Brave. Откройте страницу расширений сами и загрузите папку, путь к ней — ниже.' -Subject $r.Dir
+        return
+    }
+    $null = Show-CgDialog -Title ('Осталось три щелчка в {0}' -f $r.Browser) -Kind 'info' `
+        -Text "1. На открывшейся странице расширений включите «Режим разработчика» (переключатель справа вверху или слева внизу).`n2. Нажмите «Загрузить распакованное» и вставьте путь клавишами Ctrl+V — он уже в буфере обмена.`n3. Готово: значок CookieGuard появится у адресной строки. В нём — выключить блокировку на сайте и настройки." `
+        -Subject $r.Dir
+    Update-CgAdStats
+}
+
+$ui.BtnAdInstall.Add_Click({
+    $res = Install-CgAdBlockFiles
+    if (-not $res.Ok) { $null = Show-CgDialog -Title 'Не удалось подготовить расширение' -Text $res.Message -Kind 'danger'; return }
+
+    # Куда подключать: если браузеров несколько, спрашиваем
+    $brs = @(Get-CgBrowsers | Where-Object { $_.Name -ne 'Firefox' } | Where-Object { @($_.Exe | Where-Object { Test-Path -LiteralPath $_ }).Count })
+    if (-not $brs.Count) { Open-CgAdBlockSteps ''; return }
+    $browser = $brs[0].Name
+    if ($brs.Count -gt 1) {
+        $names = @($brs | Select-Object -First 3 | ForEach-Object { $_.Name })
+        $ans = Show-CgDialog -Title 'В какой браузер подключить блокировщик?' -Kind 'question' `
+            -Text 'Для каждого браузера это делается отдельно; потом можно нажать кнопку ещё раз и подключить в следующий.' `
+            -Buttons (@($names) + 'Отмена')
+        if ($ans -lt 0 -or $ans -ge $names.Count) { return }
+        $browser = $names[$ans]
+    }
+
+    $st = Get-CgAdBlockStatus
+    if (-not $st.Lists) {
+        $ans = Show-CgDialog -Title 'Скачать списки рекламы?' -Kind 'question' `
+            -Text 'Встроенные правила режут около сотни рекламных сетей. Списки EasyList и RuAdList добавят ещё десятки тысяч — в том числе российские сайты. Скачиваются с easylist.to и adblockplus.org; из них берутся только адреса и CSS-селекторы, никакой код.' `
+            -Buttons @('Скачать и подключить', 'Только встроенные')
+        if ($ans -eq 0) {
+            $script:CgAdOpenAfter = $browser
+            Start-BgTask 'adlists' 'Скачиваю и перевожу списки рекламы...'
+            return
+        }
+    }
+    Open-CgAdBlockSteps $browser
+})
+
+$ui.BtnAdLists.Add_Click({
+    Start-BgTask 'adlists' 'Скачиваю и перевожу списки рекламы...'
+})
+
+$ui.BtnAdFolder.Add_Click({
+    $null = Install-CgAdBlockFiles
+    Start-Process explorer.exe (Get-CgAdBlockDir)
+})
 
 $ui.BtnHelp.Add_Click({
     $p = Join-Path $PSScriptRoot 'README.md'
@@ -1615,6 +1698,28 @@ $timer.Add_Tick({
             }
             'auto'  { $app.Autoruns = $res; Show-Autoruns; Set-Busy $false 'Автозапуск обновлён' }
             'runs'  { $app.Runs = $res;     Show-Runs;     Set-Busy $false 'История запусков обновлена' }
+            'adlists' {
+                $info = $sync.AdInfo
+                $sync.AdInfo = $null
+                Update-CgAdStats
+                if ($info -and $info.Ok) {
+                    Set-Busy $false $info.Message
+                    if ($script:CgAdOpenAfter) {
+                        $b = $script:CgAdOpenAfter
+                        $script:CgAdOpenAfter = $null
+                        Open-CgAdBlockSteps $b
+                    } else {
+                        $null = Show-CgDialog -Title 'Списки обновлены' -Kind 'ok' -Text $info.Message `
+                            -Subject 'Чтобы браузер их подхватил, нажмите «Перечитать списки» в настройках расширения (значок CookieGuard → Настройки) или перезапустите браузер.'
+                    }
+                } else {
+                    Set-Busy $false 'Списки не обновлены'
+                    $msg = 'Не удалось.'
+                    if ($info) { $msg = $info.Message }
+                    $null = Show-CgDialog -Title 'Списки не обновлены' -Text $msg -Kind 'warn'
+                    if ($script:CgAdOpenAfter) { $b = $script:CgAdOpenAfter; $script:CgAdOpenAfter = $null; Open-CgAdBlockSteps $b }
+                }
+            }
             'basenew' {
                 Set-Busy $false 'Эталон снят. Теперь любое изменение автозапуска, расширений, скриптов Adobe, сертификатов и сети будет заметно.'
                 Update-Cards
@@ -1714,6 +1819,9 @@ $tips = @{
     BtnTrust       = 'Пометить как разобранное: больше не будет попадать в находки. Программа спросит, насколько широко: только этот файл, эта программа любой версии, весь издатель или вся папка.'
     BtnScanFiles   = 'Страница проверки файлов. Файл или папку можно бросить в любое место окна — программа сама распакует архив, спросит пароль и решит, что имеет смысл проверять.'
     BtnScanFiles2  = 'Перейти к проверке файлов. Файл можно просто бросить в окно.'
+    BtnAdInstall   = 'Подключить свой блокировщик рекламы CookieGuard к Chrome, Edge или Brave. Запросы к рекламе режет сам браузер; расширению запрещено ходить в сеть.'
+    BtnAdLists     = 'Скачать свежие EasyList и RuAdList и перевести их в правила браузера. Из списков берутся только адреса и CSS-селекторы.'
+    BtnAdFolder    = 'Открыть папку расширения: весь его код там, его можно прочитать.'
     BtnFixAll      = 'Исправить разом всё, что программа умеет исправлять сама. Покажет список с галочками — снимите те, что оставили намеренно. Каждое исправление обратимо.'
     BtnFixAll2     = 'Исправить разом всё, что программа умеет исправлять сама. Покажет список с галочками.'
     BtnExtVerify   = 'Спросить магазин Chrome/Edge, что он знает о критичных расширениях: есть ли оно там и сколько у него пользователей. Наружу уходит только номер расширения.'
@@ -2348,6 +2456,7 @@ function Invoke-CgLateInit {
     }
     $ui.CmbDns.SelectedIndex = 0
     Update-DnsStats
+    Update-CgAdStats
     Refresh-Log
     $ui.ChipMon.Text = (T 'монитор: остановлен')
     if (-not $app.IsAdmin) {

@@ -1,0 +1,101 @@
+{
+  "_comment": "Встроенные правила скрытия для отдельных сайтов. Ключ — домен (действует и на поддомены), значение — CSS-селекторы рекламных блоков.",
+  "youtube.com": [
+    "#masthead-ad",
+    "#player-ads",
+    "ytd-ad-slot-renderer",
+    "ytd-in-feed-ad-layout-renderer",
+    "ytd-display-ad-renderer",
+    "ytd-promoted-sparkles-web-renderer",
+    "ytd-promoted-video-renderer",
+    "ytd-compact-promoted-video-renderer",
+    "ytd-banner-promo-renderer",
+    "ytd-statement-banner-renderer",
+    "ytd-companion-slot-renderer",
+    "ytd-action-companion-ad-renderer",
+    "ytd-engagement-panel-section-list-renderer[target-id=\"engagement-panel-ads\"]",
+    "ytd-merch-shelf-renderer",
+    "ytd-rich-item-renderer:has(ytd-ad-slot-renderer)",
+    "ytd-rich-section-renderer:has(ytd-statement-banner-renderer)",
+    ".ytp-ad-overlay-container",
+    ".ytp-ad-overlay-slot",
+    ".ytd-player-legacy-desktop-watch-ads-renderer",
+    "ytm-promoted-sparkles-web-renderer",
+    "ad-slot-renderer"
+  ],
+  "yandex.ru": [
+    "[data-fast-name=\"direct\"]",
+    "[data-fast-wzrd=\"direct_carousel\"]",
+    ".serp-adv__item",
+    ".serp-adv-item",
+    "li.serp-item:has(.label_theme_direct)",
+    "li.serp-item:has(.organic__subtitle .label_theme_direct)",
+    "[data-name=\"adv\"]"
+  ],
+  "ya.ru": [
+    "[data-fast-name=\"direct\"]",
+    "li.serp-item:has(.label_theme_direct)"
+  ],
+  "dzen.ru": [
+    "[data-testid=\"ad-banner\"]",
+    "[class*=\"ad-banner\"]",
+    "[data-testid=\"card-ad\"]"
+  ],
+  "vk.com": [
+    "#ads_left",
+    ".ads_ads_news_wrap",
+    "[data-ad-view]",
+    "[data-ad-block-uid]",
+    "._ads_block_data_w",
+    ".feed_row:has([data-ad-view])"
+  ],
+  "ok.ru": [
+    "[data-l*=\"t,ads\"]",
+    "#hook_Block_ForthColumnTopBanner",
+    "#hook_Block_ViewportHeightAwareBanner",
+    "[data-module=\"AdBanner\"]"
+  ],
+  "mail.ru": [
+    "[data-testid=\"ad-slot\"]",
+    "[class*=\"js-adv\"]",
+    "[data-qa=\"Banner\"]",
+    ".tgb-wrapper"
+  ],
+  "rambler.ru": [
+    "[data-blocks=\"banner\"]",
+    "[class*=\"_banner_\"][data-rcm]"
+  ],
+  "avito.ru": [
+    "[data-marker=\"ads-banner\"]",
+    "[class*=\"advert-banner\"]"
+  ],
+  "google.com": [
+    "#tads",
+    "#tadsb",
+    "#bottomads",
+    "div[data-text-ad]"
+  ],
+  "google.ru": [
+    "#tads",
+    "#tadsb",
+    "#bottomads",
+    "div[data-text-ad]"
+  ],
+  "bing.com": [
+    "li.b_ad",
+    ".b_adTop",
+    ".b_adBottom"
+  ],
+  "duckduckgo.com": [
+    "[data-testid=\"ad\"]"
+  ],
+  "twitch.tv": [
+    "[data-test-selector=\"ad-banner-default-text\"]",
+    ".stream-display-ad__container"
+  ],
+  "reddit.com": [
+    "shreddit-ad-post",
+    "shreddit-comments-page-ad",
+    "[data-testid=\"promoted-post\"]"
+  ]
+}

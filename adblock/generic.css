@@ -1,0 +1,40 @@
+/* CookieGuard AdBlock — общие рекламные блоки, на любом сайте.
+   Только то, что однозначно реклама: контейнеры рекламных сетей
+   с их собственными именами. Общие слова вроде .ad или .banner
+   сюда намеренно не входят — ими называют и обычные части сайтов.
+   На сайтах из исключений <html> получает data-cgab-off, и эти
+   правила перестают действовать. */
+
+html:not([data-cgab-off]) ins.adsbygoogle,
+html:not([data-cgab-off]) .adsbygoogle,
+html:not([data-cgab-off]) [id^="google_ads_iframe"],
+html:not([data-cgab-off]) [id^="div-gpt-ad"],
+html:not([data-cgab-off]) [id^="aswift_"],
+html:not([data-cgab-off]) iframe[src*="googlesyndication.com"],
+html:not([data-cgab-off]) iframe[src*="doubleclick.net"],
+html:not([data-cgab-off]) iframe[id^="google_ads_"],
+html:not([data-cgab-off]) [data-google-query-id],
+html:not([data-cgab-off]) [id^="yandex_rtb"],
+html:not([data-cgab-off]) [id^="yandex_ad"],
+html:not([data-cgab-off]) [id^="adfox_"],
+html:not([data-cgab-off]) [class^="adfox_"],
+html:not([data-cgab-off]) iframe[src*="an.yandex.ru"],
+html:not([data-cgab-off]) iframe[src*="ads.adfox.ru"],
+html:not([data-cgab-off]) [id^="taboola-"],
+html:not([data-cgab-off]) .trc_related_container,
+html:not([data-cgab-off]) .OUTBRAIN,
+html:not([data-cgab-off]) [data-widget-id][data-src*="outbrain"],
+html:not([data-cgab-off]) [id^="mgid_"],
+html:not([data-cgab-off]) [id^="MarketGid"],
+html:not([data-cgab-off]) [id^="ScriptRoot"],
+html:not([data-cgab-off]) [id^="crt-"][style*="min-height"],
+html:not([data-cgab-off]) .smi2-widget,
+html:not([data-cgab-off]) [id^="smi_teaser"],
+html:not([data-cgab-off]) [id^="lentainform"],
+html:not([data-cgab-off]) [class^="relap-"],
+html:not([data-cgab-off]) [id^="admixer"],
+html:not([data-cgab-off]) iframe[src*="adriver.ru"],
+html:not([data-cgab-off]) amp-ad,
+html:not([data-cgab-off]) amp-embed[type="taboola"] {
+  display: none !important;
+}

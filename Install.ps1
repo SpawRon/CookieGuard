@@ -65,7 +65,7 @@ foreach ($p in (Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -E
 
 # ---- 3. скопировать программу ----
 # Рабочие данные НЕ копируем: они принадлежат компьютеру, а не раздаче
-$skip = @('state', 'logs', 'reports', 'evidence', 'quarantine', '.git', 'build', 'obj')
+$skip = @('state', 'logs', 'reports', 'evidence', 'quarantine', 'undo', '.git', 'build', 'obj')
 if (-not (Test-Path -LiteralPath $Path)) { New-Item -ItemType Directory -Path $Path -Force | Out-Null }
 
 $copied = 0
