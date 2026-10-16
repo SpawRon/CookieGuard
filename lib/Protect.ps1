@@ -68,15 +68,52 @@ function Test-CgTask {
     try { return [bool](Get-ScheduledTask -TaskName $Name -ErrorAction Stop) } catch { return $false }
 }
 
-function Get-CgGuardHeartbeatAge {
-    $hb = Join-Path (Get-CgDir 'state') 'guard-heartbeat.txt'
-    if (-not (Test-Path -LiteralPath $hb)) { return $null }
-    try { return ((Get-Date) - [datetime]::Parse(([IO.File]::ReadAllText($hb)).Trim())).TotalSeconds } catch { return $null }
+# Отметка «жив»: «время|v2|PID|метка кода». Старый сторож писал только
+# время — по нему и видно, что он работает на старом коде. Так и
+# случилось после обновления fd19481: обновление ставило ещё старое
+# окно, перезапускать сторожа оно не умело, и старый сторож продолжал
+# отмечаться «жив», ничего не чиня. Две части автозащиты горели
+# красным без объяснений.
+function Get-CgHeartbeatPath { Join-Path (Get-CgDir 'state') 'guard-heartbeat.txt' }
+
+function Get-CgGuardInfo {
+    $r = [PSCustomObject]@{ Alive = $false; Age = $null; Version = 0; ProcId = 0; CodeStamp = [int64]0 }
+    $hb = Get-CgHeartbeatPath
+    if (-not (Test-Path -LiteralPath $hb)) { return $r }
+    try {
+        $parts = ([IO.File]::ReadAllText($hb)).Trim() -split '\|'
+        $r.Age = ((Get-Date) - [datetime]::Parse($parts[0])).TotalSeconds
+        $r.Alive = ($r.Age -lt 90)
+        $r.Version = 1
+        if ($parts.Count -ge 4 -and $parts[1] -eq 'v2') {
+            $r.Version = 2
+            $r.ProcId = [int]$parts[2]
+            $r.CodeStamp = [int64]$parts[3]
+        }
+    } catch { }
+    return $r
 }
 
-function Test-CgGuardAlive {
-    $age = Get-CgGuardHeartbeatAge
-    return ($null -ne $age -and $age -lt 90)
+function Get-CgGuardHeartbeatAge { (Get-CgGuardInfo).Age }
+
+function Test-CgGuardAlive { (Get-CgGuardInfo).Alive }
+
+# Метка кода — самое позднее изменение файлов сторожа. Сторож пишет
+# свою в отметку «жив»; меньше, чем у файлов на диске, — он на старом коде.
+function Get-CgCodeStamp {
+    $t = [datetime]::MinValue
+    $root = Get-CgRoot
+    foreach ($f in @(Get-Item -LiteralPath (Join-Path $root 'Guard-Service.ps1') -ErrorAction SilentlyContinue) +
+                   @(Get-ChildItem -LiteralPath (Join-Path $root 'lib') -Filter *.ps1 -File -ErrorAction SilentlyContinue)) {
+        if ($f.LastWriteTimeUtc -gt $t) { $t = $f.LastWriteTimeUtc }
+    }
+    return $t.Ticks
+}
+
+function Test-CgGuardCurrent {
+    $g = Get-CgGuardInfo
+    if (-not $g.Alive) { return $false }
+    return ($g.Version -ge 2 -and $g.CodeStamp -ge (Get-CgCodeStamp))
 }
 
 # Перезапуск сторожа: нужен после обновления, чтобы фон заработал
@@ -195,9 +232,9 @@ function Get-CgProtectParts {
             Test = { Test-CgTask $script:CgTaskGuard }
             Heal = $null }
         [PSCustomObject]@{ Key = 'alive'; Core = $true
-            Name = 'Сторож работает прямо сейчас'
-            Why  = 'Отметка «жив» обновляется каждые 20 секунд.'
-            Test = { Test-CgGuardAlive }
+            Name = 'Сторож работает на текущей версии'
+            Why  = 'Отметка «жив» обновляется каждые 20 секунд и несёт метку кода: сторож на старой версии ничего не чинит и не ведёт летопись.'
+            Test = { Test-CgGuardCurrent }
             Heal = $null }
         [PSCustomObject]@{ Key = 'watchdog'; Core = $false
             Name = 'Наблюдатель поднимает сторожа, если его убили'
@@ -227,7 +264,7 @@ function Get-CgProtectParts {
         [PSCustomObject]@{ Key = 'net'; Core = $false
             Name = 'Теневой путь: куда соединяется тот, кто трогал cookie'
             Why  = 'Программа, прочитавшая cookie, и подозрительный процесс 10 минут под наблюдением в сети. Отдельно — любые соединения посторонних программ с Telegram, Discord и файлообменниками, куда воры паролей сливают добычу.'
-            Test = { Test-CgGuardAlive }
+            Test = { Test-CgGuardCurrent }
             Heal = $null }
         [PSCustomObject]@{ Key = 'seclog'; Core = $false
             Name = 'Журнал безопасности не меньше 256 МБ'

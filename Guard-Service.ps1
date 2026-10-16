@@ -141,14 +141,7 @@ function Watch-Defenses {
 # Обновление заменило код — работать дальше на старом нельзя: новая
 # защита появилась бы только после перезагрузки. Сторож выходит,
 # наблюдатель (или окно, поставившее обновление) поднимает его снова.
-function Get-CgCodeStamp {
-    $t = [datetime]::MinValue
-    foreach ($f in @(Get-Item -LiteralPath (Join-Path $root 'Guard-Service.ps1') -ErrorAction SilentlyContinue) +
-                   @(Get-ChildItem -LiteralPath (Join-Path $root 'lib') -Filter *.ps1 -File -ErrorAction SilentlyContinue)) {
-        if ($f.LastWriteTimeUtc -gt $t) { $t = $f.LastWriteTimeUtc }
-    }
-    return $t
-}
+# Метка кода — Get-CgCodeStamp из Protect.ps1.
 
 # ------------------------------------------------------------
 #  Автообезвреживание — только для подтверждённо вредного
@@ -177,14 +170,15 @@ function Try-AutoNeutralize {
 # ------------------------------------------------------------
 #  Главный цикл
 # ------------------------------------------------------------
-$hbPath = Join-Path (Get-CgDir 'state') 'guard-heartbeat.txt'
+$hbPath = Get-CgHeartbeatPath
+$codeStamp = Get-CgCodeStamp
 function Write-CgHeartbeat {
-    try { [IO.File]::WriteAllText($hbPath, (Get-Date).ToString('o'), [Text.UTF8Encoding]::new($false)) } catch { }
+    $t = '{0}|v2|{1}|{2}' -f (Get-Date).ToString('o'), $PID, $codeStamp
+    try { [IO.File]::WriteAllText($hbPath, $t, [Text.UTF8Encoding]::new($false)) } catch { }
 }
 Write-CgHeartbeat
 
 $state = New-CgMonitorState -Persist
-$codeStamp = Get-CgCodeStamp
 $lastWatch = (Get-Date).AddMinutes(-5)
 $lastBeat = Get-Date
 $lastCode = Get-Date

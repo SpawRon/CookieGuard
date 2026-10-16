@@ -79,7 +79,7 @@ foreach ($n in @('ChipAdmin','ChipAudit','ChipMon','BtnScan','BtnMon','Cards','B
                  'CmbDns','BtnDnsOn','BtnDnsOff','BtnDnsTest','DnsStats',
                  'TitleBar','BtnMinW','BtnMaxW','BtnCloseW','Nav','BtnScanFiles','BtnScanFiles2',
                  'TglAudit','TglGuard','AuditSub',
-                 'TglAuto','AutoSub','BtnAutoMore','AutoPartsBox','AutoParts','AutoPartsHint',
+                 'TglAuto','AutoSub','BtnAutoMore','BtnAutoFix','AutoPartsBox','AutoParts','AutoPartsHint',
                  'Inspector','InspKind','InspTitle','BtnInspClose','BtnDiag',
                  'UpdStats','UpdWhere','BtnUpdCheck','BtnUpdInstall','BtnUpdToken',
                  'BtnInspect','FixHead','FixPanel',
@@ -902,9 +902,7 @@ $ui.BtnQuarDelete.Add_Click({
 function Update-GuardStats {
     $t = Get-ScheduledTask -TaskName 'CookieGuard Watcher' -ErrorAction SilentlyContinue
     if ($t) {
-        $hb = Join-Path (Get-CgDir 'state') 'guard-heartbeat.txt'
-        $live = $false
-        if (Test-Path -LiteralPath $hb) { try { $live = (((Get-Date) - [datetime]::Parse((Get-Content $hb -Raw))).TotalSeconds -lt 90) } catch { } }
+        $live = Test-CgGuardAlive
         if ($live) { $ui.GuardStats.Text = (T 'установлен, работает'); $ui.GuardStats.Foreground = 'LightGreen' }
         else { $ui.GuardStats.Text = (T 'установлен (сердцебиения пока нет)'); $ui.GuardStats.Foreground = '#FFB340' }
     } else {
@@ -969,7 +967,9 @@ $monScript = {
         $lastCheck = [datetime]::MinValue
         $guard = $false
         while (-not $sync.Stop) {
-            if (((Get-Date) - $lastCheck).TotalSeconds -ge 10) { $guard = Test-CgGuardAlive; $lastCheck = Get-Date }
+            # Читать летопись сторожа можно, только если он её ведёт:
+            # старый сторож отмечается «жив», но летописи не пишет
+            if (((Get-Date) - $lastCheck).TotalSeconds -ge 10) { $guard = Test-CgGuardCurrent; $lastCheck = Get-Date }
             try {
                 if ($guard) {
                     $sync.Mode = 'guard'
@@ -2478,6 +2478,14 @@ function Update-CgAutoUi {
         $d = New-Object System.Windows.Controls.TextBlock
         $d.Text = (T $p.Why); $d.Foreground = '#7C8694'; $d.FontSize = 11.5; $d.TextWrapping = 'Wrap'; $d.Margin = '0,2,0,0'
         $null = $sp.Children.Add($n); $null = $sp.Children.Add($d)
+        # Красная строка без объяснения — это «просто не работает».
+        # Говорим, почему, и что сделает «Починить».
+        if ($auto -and $p.On -eq $false) {
+            $why = Get-CgPartFixText $p.Key
+            $r = New-Object System.Windows.Controls.TextBlock
+            $r.Text = $why; $r.Foreground = '#FFB340'; $r.FontSize = 11.5; $r.TextWrapping = 'Wrap'; $r.Margin = '0,3,0,0'
+            $null = $sp.Children.Add($r)
+        }
         [System.Windows.Controls.Grid]::SetColumn($sp, 1)
         $s2 = New-Object System.Windows.Controls.TextBlock
         $s2.Text = $state; $s2.Foreground = $color; $s2.FontSize = 11.5; $s2.Margin = '14,1,0,0'
@@ -2500,7 +2508,34 @@ function Update-CgAutoUi {
         $ui.AutoPartsHint.Text = (T 'Всё это включится одним переключателем справа.')
     }
     if ($unknown -and -not $app.IsAdmin) { $ui.AutoPartsHint.Text += ' ' + (T 'Часть состояния видна только с правами администратора.') }
+    $ui.BtnAutoFix.Visibility = $(if ($auto -and $bad) { 'Visible' } else { 'Collapsed' })
 }
+
+function Get-CgPartFixText {
+    param([string]$Key)
+    switch ($Key) {
+        'guard'    { return (T 'Задачи сторожа нет. «Починить» поставит её.') }
+        'alive'    {
+            $g = Get-CgGuardInfo
+            if ($g.Alive) { return (T 'Сторож работает на старой версии: обновление ставило прежнее окно, которое не умело его перезапускать. «Починить» перезапустит его.') }
+            return (T 'Сторож не отвечает. «Починить» запустит его заново.')
+        }
+        'watchdog' { return (T 'Задачи наблюдателя нет. «Починить» создаст её.') }
+        'net'      { return (T 'Работает внутри сторожа — оживёт вместе с ним.') }
+        default    { return (T 'Выключено. «Починить» включит; дальше за этим следит сторож.') }
+    }
+}
+
+$ui.BtnAutoFix.Add_Click({
+    Set-Busy $true 'Чиню автозащиту...'
+    $null = Invoke-AuditScript 'Install-Protect.ps1' 'Починка автозащиты' $(if ((Get-CgSettings).AutoNeutralize) { @('-AutoNeutralize') } else { @() })
+    Set-Busy $false
+    Sync-CgToggles
+    Update-GuardStats
+    # сторожу нужно несколько секунд, чтобы отметиться на новой версии
+    Start-Sleep -Milliseconds 2500
+    Update-CgAutoUi
+})
 
 $ui.BtnAutoMore.Add_Click({
     if ($ui.AutoPartsBox.Visibility -eq 'Visible') {
@@ -2650,6 +2685,12 @@ function Invoke-CgLateInit {
     Update-DnsStats
     Update-CgAdStats
     Refresh-Log
+    # Сторож на старой версии (обновление ставило прежнее окно, которое
+    # не умело его перезапускать) — перезапускаем сразу, права есть
+    $gi = Get-CgGuardInfo
+    if ($gi.Alive -and -not (Test-CgGuardCurrent) -and $app.IsAdmin) {
+        if (Restart-CgGuard) { Write-CgLog 'INFO' 'Сторож работал на старой версии — перезапущен из окна' }
+    }
     Update-CgAutoUi
     # Прошлые события — из летописи на диске: список не начинается с
     # пустоты после перезапуска, перезагрузки или обновления

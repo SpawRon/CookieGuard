@@ -1893,4 +1893,15 @@ PlayerDebugMode станет 0.	PlayerDebugMode will be set to 0.
 hosts направляет важные сайты на заданные вручную адреса: {0}	hosts sends important sites to hand-set addresses: {0}
 Перенаправления в hosts на собственные адреса сервисов: {0}	hosts redirects to the services' own addresses: {0}
 hosts блокирует сайты защиты и обновлений: {0}	hosts blocks security and update sites: {0}
+Починить	Fix
+Чиню автозащиту...	Fixing auto-protection...
+Починка автозащиты	Fixing auto-protection
+Сторож работает на текущей версии	The guard runs the current version
+Отметка «жив» обновляется каждые 20 секунд и несёт метку кода: сторож на старой версии ничего не чинит и не ведёт летопись.	The “alive” mark is refreshed every 20 seconds and carries a code stamp: a guard on an old version repairs nothing and keeps no event journal.
+Задачи сторожа нет. «Починить» поставит её.	The guard task is missing. “Fix” will create it.
+Сторож работает на старой версии: обновление ставило прежнее окно, которое не умело его перезапускать. «Починить» перезапустит его.	The guard is running an old version: the update was installed by the previous window, which couldn't restart it. “Fix” will restart it.
+Сторож не отвечает. «Починить» запустит его заново.	The guard isn't responding. “Fix” will start it again.
+Задачи наблюдателя нет. «Починить» создаст её.	The watchdog task is missing. “Fix” will create it.
+Работает внутри сторожа — оживёт вместе с ним.	Runs inside the guard — comes back with it.
+Выключено. «Починить» включит; дальше за этим следит сторож.	Off. “Fix” turns it on; after that the guard keeps it on.
 '@

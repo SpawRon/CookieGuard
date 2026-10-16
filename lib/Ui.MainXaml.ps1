@@ -466,14 +466,15 @@ $script:CgMainXaml = @'
               <Border Style="{StaticResource CardRow}" Margin="0,0,0,26">
                 <StackPanel>
                   <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xEA18;" Style="{StaticResource SettingIconGlyph}"/></Border>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                       <TextBlock Text="Автозащита" Style="{StaticResource SettingName}"/>
                       <TextBlock x:Name="AutoSub" Text="Всё наблюдение одним переключателем. Помнит, что включено, стартует вместе с Windows и само включает обратно то, что выключили." Style="{StaticResource Sub}" Margin="0,3,0,0"/>
                     </StackPanel>
-                    <Button x:Name="BtnAutoMore" Grid.Column="2" Content="Что включено ▾" Style="{StaticResource Ghost}" Margin="14,0,0,0"/>
-                    <CheckBox x:Name="TglAuto" Grid.Column="3" Style="{StaticResource Toggle}" Margin="14,0,0,0"/>
+                    <Button x:Name="BtnAutoFix" Grid.Column="2" Content="Починить" Visibility="Collapsed" Margin="14,0,0,0"/>
+                    <Button x:Name="BtnAutoMore" Grid.Column="3" Content="Что включено ▾" Style="{StaticResource Ghost}" Margin="14,0,0,0"/>
+                    <CheckBox x:Name="TglAuto" Grid.Column="4" Style="{StaticResource Toggle}" Margin="14,0,0,0"/>
                   </Grid>
                   <StackPanel x:Name="AutoPartsBox" Visibility="Collapsed" Margin="0,16,0,0">
                     <Border Height="1" Background="{StaticResource Line}" Margin="0,0,0,12"/>
