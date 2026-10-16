@@ -1042,6 +1042,7 @@ Adobe обычно грузит только подписанные расшир
 ПОЯВИЛАСЬ КОПИЯ БАЗЫ COOKIE ВНЕ ПАПКИ БРАУЗЕРА	A COPY OF THE COOKIE DATABASE APPEARED OUTSIDE THE BROWSER FOLDER
 Браузеры не кладут такие файлы сюда. Так делают программы, которые готовят данные к отправке наружу.	Browsers don't put such files here. This is what programs do when preparing data to send out.
 # ---- Core.ps1: process risk reasons (shown in Monitor details and process findings) ----
+сторож или наблюдатель CookieGuard (задача планировщика)	CookieGuard watcher or watchdog (scheduled task)
 нет пути к исполняемому файлу (процесс скрывает образ)	no path to the executable (the process hides its image)
 подпись системного файла повреждена: {0}	system file signature is damaged: {0}
 файл без цифровой подписи (но в Program Files)	file has no digital signature (but is in Program Files)

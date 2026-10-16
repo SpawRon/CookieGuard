@@ -189,13 +189,36 @@ function Test-CgFileAudited {
 # файл, Local State и приманки, добавленные обновлением, — это не
 # выключение, а первое включение. Путать одно с другим нельзя: так
 # появилась ложная тревога «было выключено и включено обратно».
+#
+# Chrome сохраняет Local State не поверх старого, а подменой: пишет
+# новую копию рядом и ставит её на место. Правило аудита было на
+# старом файле и уходит вместе с ним — каждые несколько минут, пока
+# браузер открыт. Отличает такую подмену время записи: у
+# пересохранённого файла оно новее, чем когда мы в последний раз
+# видели его под аудитом, а снятие правила время записи не трогает.
+# Поэтому помним, каким было время записи при последнем «под аудитом».
+if (-not $script:CgAuditSeen) { $script:CgAuditSeen = @{} }
+
+function Get-CgWriteTicks {
+    param([string]$Path)
+    try { return [IO.File]::GetLastWriteTimeUtc($Path).Ticks } catch { return [int64]0 }
+}
+
 function Get-CgCookieAuditLost {
     param([string[]]$Missing)
     $f = Join-Path (Get-CgDir 'state') 'audited-files.txt'
     if (-not (Test-Path -LiteralPath $f)) { return @() }
     $had = @{}
     foreach ($l in (Get-Content -LiteralPath $f -Encoding UTF8)) { if ($l) { $had[$l.ToLowerInvariant()] = $true } }
-    return @($Missing | Where-Object { $had.ContainsKey("$_".ToLowerInvariant()) })
+    $lost = @()
+    foreach ($p in $Missing) {
+        $k = "$p".ToLowerInvariant()
+        if (-not $had.ContainsKey($k)) { continue }
+        $seen = $script:CgAuditSeen[$k]
+        if ($seen -and (Get-CgWriteTicks $p) -gt $seen) { continue }   # браузер пересохранил файл
+        $lost += $p
+    }
+    return $lost
 }
 
 function Get-CgCookieAuditGaps {
@@ -204,7 +227,8 @@ function Get-CgCookieAuditGaps {
     foreach ($t in $all) {
         $r = Test-CgFileAudited $t.Path
         if ($null -eq $r) { $unknown = $true; continue }
-        if (-not $r) { $gaps += $t.Path }
+        if ($r) { $script:CgAuditSeen[$t.Path.ToLowerInvariant()] = Get-CgWriteTicks $t.Path }
+        else { $gaps += $t.Path }
     }
     return [PSCustomObject]@{ Total = $all.Count; Missing = $gaps; Unknown = $unknown }
 }

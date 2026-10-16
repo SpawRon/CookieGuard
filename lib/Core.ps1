@@ -521,6 +521,24 @@ function Test-CgNativeMessagingHost {
     return ("$CommandLine" -match '(?i)/c\s+"*[^"]+\.exe"*\s+"?(chrome-extension://[a-p]{32}/|[a-z0-9_.-]+@[a-z0-9_.-]+|\{[0-9a-f-]{36}\})')
 }
 
+# Сторож и наблюдатель CookieGuard — powershell со скрытым окном и
+# -ExecutionPolicy Bypass от SYSTEM: по признакам ровно то, что ищет
+# оценка риска, а путь к образу процесса SYSTEM окно прочитать не
+# может. Наблюдатель запускается раз в минуту, и монитор то и дело
+# сообщал о «подозрительном powershell.exe» — о самом CookieGuard.
+# Узнаём их по точной строке, которую ставят Register-CgGuardTask и
+# Register-CgWatchdogTask, и по родителю — планировщику (svchost).
+# Любая добавка к строке — уже не наша задача.
+function Test-CgOwnTaskProcess {
+    param([string]$Name, [string]$CommandLine, [string]$ParentName)
+    if ("$Name".ToLowerInvariant() -ne 'powershell.exe') { return $false }
+    if ("$ParentName".ToLowerInvariant() -ne 'svchost.exe') { return $false }
+    $ps = [regex]::Escape((Join-Path $env:windir 'System32\WindowsPowerShell\v1.0\powershell.exe'))
+    $root = [regex]::Escape((Get-CgRoot))
+    $re = '(?i)^"?{0}"?\s+-NoProfile\s+-ExecutionPolicy\s+Bypass\s+-WindowStyle\s+Hidden\s+-File\s+"{1}\\(Watchdog|Guard-Service)\.ps1"(\s+-AutoNeutralize)?\s*$' -f $ps, $root
+    return ("$CommandLine" -match $re)
+}
+
 # ---------- оценка риска ----------
 
 function Measure-CgProcessRisk {
@@ -543,6 +561,12 @@ function Measure-CgProcessRisk {
     $cmd = ''
     if ($Proc.CommandLine) { $cmd = $Proc.CommandLine }
     $cmdl = $cmd.ToLowerInvariant()
+
+    if (Test-CgOwnTaskProcess $name $cmd $Proc.ParentName) {
+        $Proc.Risk = 0
+        $Proc.Reasons = @('сторож или наблюдатель CookieGuard (задача планировщика)')
+        return $Proc
+    }
 
     # защищённые процессы Windows: пустой путь у них нормален
     $isProtected = ($script:ProtectedProcs -contains $name) -or ($Proc.Id -le 4)

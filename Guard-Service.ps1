@@ -91,7 +91,7 @@ function Watch-Defenses {
         try { $g0 = Get-CgCookieAuditGaps; if ($g0.Missing.Count) { $lostSacl = @(Get-CgCookieAuditLost $g0.Missing) } } catch { }
         foreach ($f in (Repair-CgProtection)) {
             if ($f.Key -eq 'sacl' -and $f.Ok -and -not $lostSacl.Count) {
-                Write-CgLog 'INFO' 'Под аудит взяты новые файлы браузеров (новый профиль, ключ шифрования или приманка)'
+                Write-CgLog 'INFO' 'Под аудит взяты новые файлы браузеров (браузер пересохранил файл, новый профиль, ключ шифрования или приманка)'
                 continue
             }
             if ($f.Ok) {
