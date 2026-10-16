@@ -1904,4 +1904,98 @@ hosts блокирует сайты защиты и обновлений: {0}	ho
 Задачи наблюдателя нет. «Починить» создаст её.	The watchdog task is missing. “Fix” will create it.
 Работает внутри сторожа — оживёт вместе с ним.	Runs inside the guard — comes back with it.
 Выключено. «Починить» включит; дальше за этим следит сторож.	Off. “Fix” turns it on; after that the guard keeps it on.
+# ---- Защита 3.0, Сеть, AppData ----
+НАСТРОЙКИ	SETTINGS
+Починить всё	Fix all
+Защищено	Protected
+Защита выключена	Protection is off
+1 часть не работает	1 part isn't working
+{0} части не работают	{0} parts aren't working
+ЧТО РАБОТАЕТ · {0} ИЗ {1}	WORKING · {0} OF {1}
+Включите автозащиту — всё наблюдение заработает разом, будет стартовать вместе с Windows и само включаться обратно.	Turn on auto-protection — all monitoring starts at once, launches with Windows and turns itself back on.
+Причина — на плите. «Починить всё» один раз попросит права администратора и включит то, что выключено.	The reason is on each tile. “Fix all” asks for administrator rights once and turns on whatever is off.
+Автозащита включена. Сторож проверяет каждую часть раз в минуту и сам включает обратно то, что выключили.	Auto-protection is on. The guard checks every part once a minute and turns back on whatever gets switched off.
+сторож отметился {0} с назад	guard checked in {0} s ago
+сторож не отвечает	guard isn't responding
+без прав администратора видно не всё	not everything is visible without admin rights
+состояние видно только администратору	only an administrator can see this state
+Сторож при старте Windows	Guard at Windows startup
+Сторож на текущей версии	Guard on the current version
+Наблюдатель	Watchdog
+Базы cookie и паролей	Cookie and password databases
+Сеть и теневой путь	Network and shadow path
+Агенты-усы	Runner agents
+Журнал безопасности	Security log
+Летопись событий	Event journal
+от SYSTEM, без окна, даже когда никто не вошёл	as SYSTEM, no window, even when nobody is signed in
+отметка «жив» каждые 20 секунд, с меткой версии	“alive” mark every 20 seconds, with a version stamp
+поднимет сторожа, если его убьют	restarts the guard if it gets killed
+Windows записывает, кто открыл базу cookie	Windows records who opened the cookie database
+базы cookie, паролей и ключ шифрования всех профилей	cookie and password databases and the encryption key of every profile
+событие 4688: что запустилось и с какой командой	event 4688: what started and with which command
+что поменяли и кто — построчно	what changed and who did it — line by line
+куда соединяется тот, кто трогал cookie	where whoever touched cookies connects to
+приманка, отладочный порт, теневые копии, внедрение	decoy, debug port, shadow copies, injection
+журнал безопасности не меньше 256 МБ	Security log of at least 256 MB
+тревоги переживают перезапуск и обновление	alerts survive restarts and updates
+Работает старая версия. «Починить» перезапустит сторожа.	An old version is running. “Fix” will restart the guard.
+Авто-карантин	Auto-quarantine
+Сразу прятать то, что VirusTotal знает как вредоносное (5+ детектов).	Quarantine right away what VirusTotal knows as malicious (5+ detections).
+включён · изымает без вопроса	on · removes without asking
+выключен · всегда спросит	off · always asks
+Фильтрующий DNS	Filtering DNS
+Реклама, трекеры и вредоносные сайты отсекаются ещё до соединения.	Ads, trackers and malicious sites are cut off before the connection.
+Выбрать…	Choose…
+Своё расширение для Chrome, Edge и Brave.	Our own extension for Chrome, Edge and Brave.
+Подключить	Connect
+Что 70 антивирусов говорят о файлах на диске. Наружу уходит только отпечаток.	What 70 antivirus engines say about files on disk. Only the fingerprint leaves the computer.
+Снимок автозапуска, расширений, сертификатов и сети: с ним видно, что поменялось.	A snapshot of autostart, extensions, certificates and network: with it you see what changed.
+Откуда приходит обновление и где лежит программа — наведите.	Where updates come from and where the program lives — hover.
+Масштаб окна	Window scale
+Крупнее — легче читать. Включится после перезапуска окна.	Bigger is easier to read. Applies after the window restarts.
+сейчас	current
+после перезапуска окна	after the window restarts
+Язык · Language	Language · Язык
+Если что-то не включается	If something won't turn on
+Права, политика аудита, службы, журнал безопасности, файлы браузеров — и причина.	Rights, audit policy, services, the Security log, browser files — and the reason.
+Разобраться	Investigate
+Ещё	More
+Вернуть прежний DNS	Restore the previous DNS
+Проверить, что фильтр работает	Check that the filter works
+Обновить списки рекламы	Update ad lists
+Открыть папку расширения	Open the extension folder
+Задать ключ VirusTotal	Set the VirusTotal key
+Получить ключ на сайте	Get a key on the website
+Снять эталон заново	Take the baseline again
+Проверить, есть ли новая версия	Check for a new version
+Сеть	Network
+Кто куда соединяется	Who connects where
+Десять контрольных точек на каждое соединение: подпись, издатель, папка, имя, hosts, канал слива, прокси, возраст файла, VirusTotal, доверие. Вердикт — их сумма.	Ten checkpoints for every connection: signature, publisher, folder, name, hosts, exfiltration channel, proxy, file age, VirusTotal, trust. The verdict is their sum.
+только требующие внимания	only those needing attention
+ВЕРДИКТ	VERDICT
+ПРОГРАММА	PROGRAM
+КУДА	WHERE
+ТОЧКИ	CHECKS
+НЕ ПРОЙДЕНО	FAILED
+соединений: {0}    проверить: {1}    опасно: {2}	connections: {0}    to check: {1}    dangerous: {2}
+через прокси: {0}	through a proxy: {0}
+внутри компьютера (не показаны): {0}	inside the computer (hidden): {0}
+через	through
+Проверяю соединения по десяти точкам...	Checking connections against ten checkpoints...
+Соединения проверены	Connections checked
+Что где лежит и чьё это	What lives where and whose it is
+Разложить	Sort out
+только с отметками	only marked
+ПАПКА	FOLDER
+ГДЕ	WHERE
+ЧЬЯ	WHOSE
+РАЗМЕР	SIZE
+ПРОГРАММ	PROGRAMS
+ОТМЕТКИ	MARKS
+неизвестно	unknown
+папок: {0}    с отметками: {1}	folders: {0}    marked: {1}
+Раскладываю AppData — около 20 секунд...	Sorting out AppData — about 20 seconds...
+AppData разложена по полкам	AppData sorted out
+менялась за неделю	changed this week
+в автозапуске	in autostart
 '@

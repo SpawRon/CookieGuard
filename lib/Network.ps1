@@ -22,6 +22,11 @@
 
 $ErrorActionPreference = 'SilentlyContinue'
 
+# Программы-прокси и туннели. Петлевое соединение к ним — это трафик,
+# ушедший наружу через прокси; к кому-то ещё — разговор двух программ
+# внутри компьютера (After Effects и dynamiclinkmanager), его не показываем.
+$script:CgProxyNames = '(?i)^(karing|karingservice|v2ray|v2rayn|xray|sing-box|clash|clash-verge|mihomo|hiddify|hiddifycli|nekoray|nekobox|winws|privoxy|proxifier|outline|happ|tun2socks|wireproxy|zapret)'
+
 $script:CgCheckpointNames = [ordered]@{
     sig = 'Подпись цела'; pub = 'Издатель известен'; dir = 'Обычная папка'; dns = 'Имя в DNS'
     owner = 'Адрес принадлежит имени'; exfil = 'Не канал слива'; direct = 'Напрямую, не через прокси'
@@ -45,12 +50,22 @@ function Get-CgConnectionReport {
 
     $out = New-Object System.Collections.ArrayList
     $seen = @{}
+    $script:CgNetInternal = 0
     foreach ($c in @(Get-NetTCPConnection -ErrorAction SilentlyContinue | Where-Object { "$($_.State)" -in @('Established', 'SynSent') })) {
         $procId = [int]$c.OwningProcess
         $ip = "$($c.RemoteAddress)"
         if ($procId -le 4 -or $ip -match '^(0\.0\.0\.0|::)$') { continue }
         $port = [int]$c.RemotePort
         $loop = ($ip -match '^(127\.|::1$)')
+        # Karing в режиме TUN подменяет адреса на «поддельные» из
+        # 198.18.0.0/15: настоящий сервер за ними не виден
+        $tun = (-not $loop) -and (Test-CgIpInCidr $ip '198.18.0.0/15')
+        $via = ''
+        if ($loop) {
+            $via = Get-CgListener $port
+            if (-not $via -or $via -notmatch $script:CgProxyNames) { $script:CgNetInternal++; continue }
+        }
+        if ($tun) { $via = 'туннель прокси (TUN)' }
         $pinfo = Get-CgNetProc $State $procId
         if (-not $pinfo) { continue }
         $hostName = Get-CgConnHost $State $ip
@@ -62,12 +77,17 @@ function Get-CgConnectionReport {
         $sig = Get-CgSignature $pinfo.Path
         $cp.sig = $(if (-not $pinfo.Path) { '-' } elseif ($sig.Valid) { 'y' } else { 'n' })
         if ($cp.sig -eq 'n') { $say.sig = "Подпись: $($sig.Status)." }
-        $cp.pub = $(if ($sig.Trusted) { 'y' } elseif ($sig.Valid) { 'n' } else { 'n' })
-        $say.pub = $(if ($sig.Signer) { "Издатель: $($sig.Signer)." } else { 'Издателя нет.' })
+        # Защищённые процессы (ESET, Defender) не отдают путь даже
+        # администратору: подпись тогда «не проверить», а не «нет»
+        $cp.pub = $(if (-not $pinfo.Path) { '-' } elseif ($sig.Trusted) { 'y' } else { 'n' })
+        $say.pub = $(if ($sig.Signer) { "Издатель: $($sig.Signer)." } elseif (-not $pinfo.Path) { 'Путь к программе закрыт — так у защищённых процессов (антивирус).' } else { 'Издателя нет.' })
         $cls = Get-CgPathClass $pinfo.Path
-        $cp.dir = $(if (-not $pinfo.Path) { '-' } elseif ($cls -in @('programfiles', 'system32', 'windows', 'windowsapps')) { 'y' } else { 'n' })
+        # Program Files и Windows — туда без прав администратора не
+        # записать. Пользовательские папки — пишет кто угодно. Другой диск
+        # (D:\ADOBE) — просто «не знаю».
+        $cp.dir = $(if (-not $pinfo.Path) { '-' } elseif ($cls -in @('programfiles', 'system32', 'windows', 'windowsapps')) { 'y' } elseif ($cls -in @('temp', 'downloads', 'public', 'roaming', 'localapp', 'programdata', 'odd')) { 'n' } else { '-' })
         if ($cp.dir -eq 'n') { $say.dir = "Лежит в пользовательской папке ($cls) — туда пишет любая программа." }
-        $cp.dns = $(if ($loop) { '-' } elseif ($hostName) { 'y' } else { 'n' })
+        $cp.dns = $(if ($loop -or $tun) { '-' } elseif ($hostName) { 'y' } else { 'n' })
         if ($cp.dns -eq 'n') { $say.dns = 'Имени в кеше DNS нет — адрес задан напрямую или получен не через DNS Windows.' }
         if ($hostName -and $hostsMap.ContainsKey($hostName)) {
             $own = (Test-CgTelegramIp $ip) -and ($hostName -match 'telegram|t\.me|telesco\.pe')
@@ -78,8 +98,8 @@ function Get-CgConnectionReport {
         $official = $isExfil -and $sig.Trusted
         $cp.exfil = $(if (-not $isExfil -or $official) { 'y' } else { 'n' })
         if ($isExfil) { $say.exfil = $(if ($official) { "Канал $(if ($hostName) { $hostName } else { 'Telegram' }), но программа подписана $($sig.Signer) — это сам сервис." } else { 'Канал, куда воры паролей обычно отправляют украденное.' }) }
-        $cp.direct = $(if ($loop) { 'n' } else { 'y' })
-        if ($loop) { $who = Get-CgListener $port; $say.direct = "Через локальный прокси$(if ($who) { " $who" }) — конечный адрес не виден." }
+        $cp.direct = $(if ($via) { 'n' } else { 'y' })
+        if ($via) { $say.direct = "Через $via — настоящий адрес назначения за ним не виден." }
         $age = '-'
         try { $fi = Get-Item -LiteralPath $pinfo.Path -ErrorAction Stop; $age = $(if (((Get-Date) - $fi.CreationTime).TotalDays -gt 7) { 'y' } else { 'n' }); if ($age -eq 'n') { $say.age = 'Файл появился ' + $fi.CreationTime.ToString('dd.MM HH:mm') + '.' } } catch { }
         $cp.age = $age
@@ -100,7 +120,7 @@ function Get-CgConnectionReport {
         elseif ($fails -ge 3 -or $cp.exfil -eq 'n' -or $cp.owner -eq 'n') { $verdict = 'check' }
 
         $null = $out.Add([PSCustomObject]@{
-            Process = $pinfo.Name; Path = $pinfo.Path; ProcId = $procId; Host = $hostName; Ip = $ip; Port = $port
+            Process = $pinfo.Name; Path = $pinfo.Path; ProcId = $procId; Host = $hostName; Ip = $ip; Port = $port; Via = $via
             Checks = [PSCustomObject]$cp; Says = $say; Fails = $fails; Verdict = $verdict
             Severity = @{ ok = 'OK'; check = 'WARN'; bad = 'CRIT' }[$verdict]
         })

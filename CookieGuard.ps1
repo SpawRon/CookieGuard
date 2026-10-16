@@ -15,6 +15,8 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 . (Join-Path $PSScriptRoot 'lib\Hosts.ps1')
 . (Join-Path $PSScriptRoot 'lib\Monitor.ps1')
 . (Join-Path $PSScriptRoot 'lib\Protect.ps1')
+. (Join-Path $PSScriptRoot 'lib\Network.ps1')
+. (Join-Path $PSScriptRoot 'lib\AppData.ps1')
 . (Join-Path $PSScriptRoot 'lib\VirusTotal.ps1')
 . (Join-Path $PSScriptRoot 'lib\Baseline.ps1')
 . (Join-Path $PSScriptRoot 'lib\Actions.ps1')
@@ -62,6 +64,20 @@ try { $null = [Cg.AppId]::SetCurrentProcessExplicitAppUserModelID('CookieGuard.A
 $win = New-CgWindow $script:CgMainXaml
 Set-CgDialogOwner $win
 
+# Масштаб. Окно было мелким и тесным: шрифт 12–13 точек на экране
+# 1920×1080 читается с трудом. Всё содержимое увеличивается разом,
+# а окно — вместе с ним, но не больше рабочей области экрана.
+$script:CgUiScale = 1.1
+try { $v = [double](Get-CgSettings).UiScale; if ($v -ge 0.9 -and $v -le 1.6) { $script:CgUiScale = $v } } catch { }
+if ($script:CgUiScale -ne 1.0 -and $win.Content -is [System.Windows.FrameworkElement]) {
+    $win.Content.LayoutTransform = New-Object System.Windows.Media.ScaleTransform($script:CgUiScale, $script:CgUiScale)
+}
+$wa = [System.Windows.SystemParameters]::WorkArea
+$win.Width  = [Math]::Min(1340 * $script:CgUiScale, $wa.Width * 0.94)
+$win.Height = [Math]::Min(900 * $script:CgUiScale, $wa.Height * 0.94)
+$win.MinWidth  = [Math]::Min($win.MinWidth * $script:CgUiScale, $wa.Width * 0.9)
+$win.MinHeight = [Math]::Min($win.MinHeight * $script:CgUiScale, $wa.Height * 0.9)
+
 $ui = @{}
 foreach ($n in @('ChipAdmin','ChipAudit','ChipMon','BtnScan','BtnMon','Cards','BtnAudit','BtnAuditOff',
                  'BtnReports','BtnEvidence','Tabs','BtnMon2','BtnMonClear','ChkShowOk','MonStats','GridMon',
@@ -79,7 +95,9 @@ foreach ($n in @('ChipAdmin','ChipAudit','ChipMon','BtnScan','BtnMon','Cards','B
                  'CmbDns','BtnDnsOn','BtnDnsOff','BtnDnsTest','DnsStats',
                  'TitleBar','BtnMinW','BtnMaxW','BtnCloseW','Nav','BtnScanFiles','BtnScanFiles2',
                  'TglAudit','TglGuard','AuditSub',
-                 'TglAuto','AutoSub','BtnAutoMore','BtnAutoFix','AutoPartsBox','AutoParts','AutoPartsHint',
+                 'TglAuto','AutoSub','BtnAutoMore','BtnAutoFix','ProtHead','AutoCount','AutoNeutrState',
+                 'GridNet','BtnNetRefresh','ChkNetOnlyBad','NetStats','GridApp','BtnAppRefresh','ChkAppOnlyMarked','AppStats',
+                 'BtnDnsMain','BtnDnsMore','BtnAdMore','BtnVtMore','BtnBaseMore','BtnUpdMore','ScaleState','CmbScale','AutoPartsBox','AutoParts','AutoPartsHint',
                  'Inspector','InspKind','InspTitle','BtnInspClose','BtnDiag',
                  'UpdStats','UpdWhere','BtnUpdCheck','BtnUpdInstall','BtnUpdToken',
                  'BtnInspect','FixHead','FixPanel',
@@ -134,6 +152,8 @@ $app = @{
     IsAdmin    = (Test-CgAdmin)
     LastScan   = $null
     MonMode    = ''
+    Net        = $null
+    AppData    = $null
 }
 
 $ui.GridMon.ItemsSource = $app.MonItems
@@ -937,7 +957,7 @@ $ui.BtnGuardOff.Add_Click({
 # ------------------------------------------------------------
 #  Выбор строки в любой таблице
 # ------------------------------------------------------------
-foreach ($g in @($ui.GridMon, $ui.GridFind, $ui.GridProc, $ui.GridExt, $ui.GridAuto, $ui.GridRun, $ui.GridQuar, $ui.GridTrust, $ui.SbGrid)) {
+foreach ($g in @($ui.GridMon, $ui.GridFind, $ui.GridProc, $ui.GridExt, $ui.GridAuto, $ui.GridRun, $ui.GridQuar, $ui.GridTrust, $ui.SbGrid, $ui.GridNet, $ui.GridApp)) {
     $g.Add_SelectionChanged({ Show-Detail $this.SelectedItem })
 }
 
@@ -1282,6 +1302,16 @@ $bgScript = {
             }
             'basediff' { $sync.BgResult = @(Compare-CgBaseline -Progress { param($t) $sync.ScanStep = $t }) }
             'procs' { $sync.BgResult = @(Get-CgProcessList) }
+            'net' {
+                . (Join-Path $sync.Root 'lib\Monitor.ps1')
+                . (Join-Path $sync.Root 'lib\Network.ps1')
+                $sync.BgResult = @(Get-CgConnectionReport)
+                $sync.NetInternal = $script:CgNetInternal
+            }
+            'appdata' {
+                . (Join-Path $sync.Root 'lib\AppData.ps1')
+                $sync.BgResult = @(Get-CgAppDataMap -Progress { param($t) $sync.BgStep = $t })
+            }
             'exts'  {
                 $l = @(Get-CgExtensionList)
                 # Перепроверка по магазину — заодно, если в списке есть
@@ -1318,7 +1348,7 @@ $bgScript = {
 function Start-BgTask {
     param([string]$Kind, [string]$Text)
     if ($sync.BgBusy) { Set-Status 'Подождите, предыдущая операция ещё идёт'; return }
-    $sync.BgBusy = $true; $sync.BgDone = $false; $sync.BgResult = $null; $sync.BgKind = ''
+    $sync.BgBusy = $true; $sync.BgDone = $false; $sync.BgResult = $null; $sync.BgKind = ''; $sync.BgStep = ''
     Set-Busy $true $Text
     $rs = [runspacefactory]::CreateRunspace()
     $rs.ApartmentState = 'MTA'; $rs.ThreadOptions = 'ReuseThread'; $rs.Open()
@@ -1357,6 +1387,86 @@ function Show-Runs {
 }
 
 function Refresh-Procs    { Start-BgTask 'procs' 'Собираю процессы и проверяю подписи...' }
+function Refresh-Net      { Start-BgTask 'net'   'Проверяю соединения по десяти точкам...' }
+function Refresh-AppData  { Start-BgTask 'appdata' 'Раскладываю AppData — около 20 секунд...' }
+
+$script:CgCheckMark = @{ y = '✓'; n = '✗'; '-' = '—' }
+
+function Show-Net {
+    $rows = @()
+    $proxy = @{}
+    foreach ($r in @($app.Net)) {
+        $c = $r.Checks
+        $failed = @(); $lines = @(); $passed = 0; $total = 0
+        foreach ($pr in $c.PSObject.Properties) {
+            $name = $script:CgCheckpointNames[$pr.Name]
+            $v = "$($pr.Value)"
+            if ($v -ne '-') { $total++ }
+            if ($v -eq 'y') { $passed++ }
+            if ($v -eq 'n') { $failed += (T $name) }
+            $say = $r.Says[$pr.Name]
+            $lines += ('{0}  {1}{2}' -f $script:CgCheckMark[$v], (T $name), $(if ($say) { ' — ' + (T $say) } else { '' }))
+        }
+        $where = $(if ($r.Host) { "$($r.Host)  ($($r.Ip):$($r.Port))" } else { "$($r.Ip):$($r.Port)" })
+        if ($r.Via) {
+            $where = (T 'через') + " $($r.Via)"
+            $proxy[$r.Via] = 1 + [int]$proxy[$r.Via]
+        }
+        $verdictText = @{ ok = 'Норма: все важные точки пройдены.'; check = 'Проверить: несколько точек не пройдены — посмотрите, какие, и решите, ваша ли это программа.'; bad = 'Опасно: неизвестная программа, канал слива или плохой вердикт VirusTotal.' }[$r.Verdict]
+        $rows += [PSCustomObject]@{
+            Severity = $r.Severity; Order = @{ 'CRIT' = 0; 'WARN' = 1; 'OK' = 4 }[$r.Severity]
+            Process = $r.Process; Where = $where; Score = ('{0} из {1}' -f $passed, $total); Passed = $passed
+            Failed = $(if ($failed.Count) { $failed -join ', ' } else { '—' })
+            Title = ('{0} → {1}' -f $r.Process, $(if ($r.Host) { $r.Host } else { "$($r.Ip):$($r.Port)" }))
+            Detail = ((@((T $verdictText), '', "$(T 'Программа:') $($r.Path)", "PID: $($r.ProcId)", '') + $lines) -join "`n")
+            Path = $r.Path; Id = $r.ProcId; Hash = ''; Query = $r.Process
+        }
+    }
+    $src = $rows
+    if ($ui.ChkNetOnlyBad.IsChecked) { $src = @($rows | Where-Object { $_.Severity -ne 'OK' }) }
+    $ui.GridNet.ItemsSource = @($src | Sort-Object Order, Process)
+    $bad = @($rows | Where-Object { $_.Severity -eq 'CRIT' }).Count
+    $chk = @($rows | Where-Object { $_.Severity -eq 'WARN' }).Count
+    $px = ''
+    if ($proxy.Count) { $px = '    ' + ((T 'через прокси: {0}') -f (($proxy.GetEnumerator() | ForEach-Object { "$($_.Key) — $($_.Value)" }) -join ', ')) }
+    if ($sync.NetInternal) { $px += '    ' + ((T 'внутри компьютера (не показаны): {0}') -f $sync.NetInternal) }
+    $ui.NetStats.Text = ((T 'соединений: {0}    проверить: {1}    опасно: {2}') -f $rows.Count, $chk, $bad) + $px
+}
+
+function Show-AppData {
+    $rows = @()
+    foreach ($r in @($app.AppData)) {
+        $det = @(
+            "$(T 'Путь:') $($r.Path)",
+            "$(T 'Чья:') $(if ($r.Owner) { $r.Owner } else { T 'неизвестно — внутри нет подписанных программ' })",
+            "$(T 'Размер:') $($r.Size), $(T 'файлов:') $($r.Files)",
+            "$(T 'Программ (.exe):') $($r.Exe)$(if ($r.Unsigned) { ', ' + (T 'без подписи:') + " $($r.Unsigned)" })",
+            "$(T 'Менялась:') $(if ($r.LastWrite) { $r.LastWrite.ToString('dd.MM.yyyy HH:mm') } else { '—' })"
+        )
+        if (@($r.Autoruns).Count) { $det += "$(T 'Стартует с Windows:') $(@($r.Autoruns) -join ', ')" }
+        if ($r.Partial) { $det += (T 'Часть папок закрыта или считалась слишком долго — размер может быть больше.') }
+        if ($r.Severity -eq 'WARN') { $det += ''; $det += (T 'Неподписанная программа в папке, из которой что-то стартует с Windows, или имя крупной компании без её подписи — так устроено большинство воров паролей и майнеров. Проверьте программы этой папки на VirusTotal.') }
+        $rows += [PSCustomObject]@{
+            Severity = $r.Severity; Order = @{ 'CRIT' = 0; 'WARN' = 1; 'NOTE' = 2; 'OK' = 4 }[$r.Severity]
+            Name = $r.Name; Root = $r.Root; Owner = $(if ($r.Owner) { $r.Owner } else { (T 'неизвестно') })
+            Size = $r.Size; Bytes = $r.Bytes; Exe = $r.Exe; Marks = $(if ($r.Marks) { (T $r.Marks) } else { '—' })
+            Title = "$($r.Root)\$($r.Name)"; Detail = ($det -join "`n"); Path = $r.Path; Hash = ''; Query = $r.Name
+        }
+    }
+    $src = $rows
+    if ($ui.ChkAppOnlyMarked.IsChecked) { $src = @($rows | Where-Object { $_.Severity -ne 'OK' }) }
+    $ui.GridApp.ItemsSource = @($src | Sort-Object @{ Expression = 'Bytes'; Descending = $true })
+    $sum = foreach ($root in @('Roaming', 'Local', 'LocalLow')) {
+        $x = @($app.AppData | Where-Object { $_.Root -eq $root })
+        '{0} {1}' -f $root, (Format-CgSize ([int64](($x | Measure-Object Bytes -Sum).Sum)))
+    }
+    $ui.AppStats.Text = ($sum -join '    ') + '    ' + ((T 'папок: {0}    с отметками: {1}') -f $rows.Count, @($rows | Where-Object { $_.Severity -ne 'OK' }).Count)
+}
+
+$ui.BtnNetRefresh.Add_Click({ Refresh-Net })
+$ui.ChkNetOnlyBad.Add_Click({ if ($null -ne $app.Net) { Show-Net } })
+$ui.BtnAppRefresh.Add_Click({ Refresh-AppData })
+$ui.ChkAppOnlyMarked.Add_Click({ if ($null -ne $app.AppData) { Show-AppData } })
 function Refresh-Exts     { Start-BgTask 'exts'  'Читаю расширения браузеров...' }
 function Refresh-Autoruns { Start-BgTask 'auto'  'Читаю автозапуск...' }
 function Refresh-Runs     { Start-BgTask 'runs'  'Читаю историю запуска программ...' }
@@ -1752,6 +1862,8 @@ $timer.Add_Tick({
         $app.BgPs = $null; $app.BgRs = $null
         switch ($kind) {
             'procs' { $app.Procs = $res;    Show-Procs;    Set-Busy $false 'Список процессов обновлён' }
+            'net'     { $app.Net = $res; Show-Net; Set-Busy $false 'Соединения проверены' }
+            'appdata' { $app.AppData = $res; Show-AppData; Set-Busy $false 'AppData разложена по полкам' }
             { $_ -in @('exts', 'extverify') } {
                 $app.Exts = $res; Show-Exts
                 # находки по расширениям — из того же свежего списка
@@ -1821,8 +1933,11 @@ $timer.Add_Tick({
         }
     }
 
+    # ход долгой фоновой задачи (AppData)
+    if ($sync.BgBusy -and $sync.BgStep) { Set-Status ('AppData: ' + $sync.BgStep) }
+
     # сканирование
-    if ($ui.Progress.Visibility -eq 'Visible' -and $sync.ScanStep) {
+    if ($ui.Progress.Visibility -eq 'Visible' -and $sync.ScanStep -and -not $sync.BgBusy) {
         Set-Status ('Проверяю систему: ' + $sync.ScanStep)
     }
     if ($sync.ScanDone -and $null -ne $sync.ScanResults) {
@@ -1991,10 +2106,12 @@ $win.Add_StateChanged({
 #  выбираются, поэтому номер строки и номер страницы не
 #  совпадают — нужна карта.
 # ------------------------------------------------------------
-$script:CgNavToPage = @{ 0 = 0; 1 = 1; 2 = 2; 4 = 3; 5 = 4; 6 = 5; 7 = 6; 8 = 7; 9 = 8; 11 = 9; 12 = 10; 13 = 11 }
+# Строка списка разделов → вкладка. Сеть и AppData — вкладки 12 и 13:
+# новые страницы добавлены в конец, чтобы не сдвигать прежние номера.
+$script:CgNavToPage = @{ 0 = 0; 1 = 1; 2 = 2; 4 = 3; 5 = 12; 6 = 4; 7 = 5; 8 = 6; 9 = 7; 10 = 8; 12 = 13; 13 = 9; 14 = 10; 15 = 11 }
 $script:CgPageByKey = @{
     'over' = 0; 'guard' = 1; 'files' = 2; 'mon' = 3; 'find' = 4; 'proc' = 5; 'ext' = 6
-    'auto' = 7; 'run' = 8; 'quar' = 9; 'trust' = 10; 'log' = 11
+    'auto' = 7; 'run' = 8; 'quar' = 9; 'trust' = 10; 'log' = 11; 'net' = 12; 'appdata' = 13
 }
 
 function Show-CgPage {
@@ -2013,6 +2130,9 @@ $ui.Nav.Add_SelectionChanged({
         $ui.Tabs.SelectedIndex = $script:CgNavToPage[$i]
         # Журнал и состояние автозащиты — свежие при каждом открытии
         if ($script:CgNavToPage[$i] -eq $script:CgPageByKey['log']) { Refresh-Log }
+        # Сеть и AppData считаются при первом открытии раздела
+        if ($script:CgNavToPage[$i] -eq $script:CgPageByKey['net'] -and $null -eq $app.Net) { Refresh-Net }
+        if ($script:CgNavToPage[$i] -eq $script:CgPageByKey['appdata'] -and $null -eq $app.AppData) { Refresh-AppData }
         if ($script:CgNavToPage[$i] -eq $script:CgPageByKey['guard'] -and $ui.AutoPartsBox.Visibility -eq 'Visible') { Update-CgAutoUi }
         Start-CgPageFade
     }
@@ -2446,69 +2566,98 @@ function Sync-CgToggles {
     }
 }
 
-# Список частей автозащиты с живым состоянием каждой
+# Плиты частей автозащиты и одна фраза о состоянии сверху
+$script:CgPartShort = @{
+    guard    = 'от SYSTEM, без окна, даже когда никто не вошёл'
+    alive    = 'отметка «жив» каждые 20 секунд, с меткой версии'
+    watchdog = 'поднимет сторожа, если его убьют'
+    fsaudit  = 'Windows записывает, кто открыл базу cookie'
+    sacl     = 'базы cookie, паролей и ключ шифрования всех профилей'
+    procaudit = 'событие 4688: что запустилось и с какой командой'
+    hosts    = 'что поменяли и кто — построчно'
+    net      = 'куда соединяется тот, кто трогал cookie'
+    agents   = 'приманка, отладочный порт, теневые копии, внедрение'
+    seclog   = 'журнал безопасности не меньше 256 МБ'
+    history  = 'тревоги переживают перезапуск и обновление'
+}
+$script:CgPartTitle = @{
+    guard = 'Сторож при старте Windows'; alive = 'Сторож на текущей версии'; watchdog = 'Наблюдатель'
+    fsaudit = 'Аудит доступа к файлам'; sacl = 'Базы cookie и паролей'; procaudit = 'Журнал запуска программ'
+    hosts = 'hosts'; net = 'Сеть и теневой путь'; agents = 'Агенты-усы'; seclog = 'Журнал безопасности'; history = 'Летопись событий'
+}
+
+function New-CgText {
+    param([string]$Text, [double]$Size = 13, [string]$Color = '#ECEFF4', [string]$Margin = '0')
+    $t = New-Object System.Windows.Controls.TextBlock
+    $t.Text = $Text; $t.FontSize = $Size; $t.Foreground = $Color; $t.TextWrapping = 'Wrap'; $t.Margin = $Margin
+    return $t
+}
+
 function Update-CgAutoUi {
     $st = @()
     try { $st = @(Get-CgProtectStatus) } catch { }
     $auto = [bool](Get-CgSettings).AutoProtect
     $ui.AutoParts.Children.Clear()
-    $bad = 0; $unknown = 0
+    $bad = 0; $unknown = 0; $ok = 0
+    $agentsNote = ''
+    try {
+        $ar = Get-CgAgentsReport
+        if ($ar.At) { $agentsNote = ('{0} из {1} на связи' -f @($ar.Agents | Where-Object { -not $_.Silent }).Count, @($ar.Agents).Count) }
+    } catch { }
     foreach ($p in $st) {
-        $g = New-Object System.Windows.Controls.Grid
-        $g.Margin = '0,0,0,10'
-        foreach ($w in @('Auto', '*', 'Auto')) {
-            $cd = New-Object System.Windows.Controls.ColumnDefinition
-            if ($w -eq '*') { $cd.Width = New-Object System.Windows.GridLength(1, ([System.Windows.GridUnitType]::Star)) }
-            else { $cd.Width = [System.Windows.GridLength]::Auto }
-            $g.ColumnDefinitions.Add($cd)
-        }
-        $dot = New-Object System.Windows.Shapes.Ellipse
-        $dot.Width = 8; $dot.Height = 8; $dot.Margin = '2,5,12,0'; $dot.VerticalAlignment = 'Top'
-        $state = ''; $color = '#7C8694'
-        if ($p.On -eq $true) { $state = (T 'работает'); $color = '#4ADE80' }
-        elseif ($p.On -eq $false) {
-            $state = (T 'выключено')
-            if ($auto) { $color = '#FF5E5E'; $bad++ }
-        } else { $state = (T 'не узнать без прав'); $unknown++ }
-        $dot.Fill = $color
-        [System.Windows.Controls.Grid]::SetColumn($dot, 0)
+        $broken = ($auto -and $p.On -eq $false)
+        if ($p.On -eq $true) { $ok++ } elseif ($p.On -eq $false) { if ($auto) { $bad++ } } else { $unknown++ }
+
+        $tile = New-Object System.Windows.Controls.Border
+        $tile.Style = $win.FindResource('PartTile')
+        if ($broken) { $tile.Background = '#130E0F' }
         $sp = New-Object System.Windows.Controls.StackPanel
-        $n = New-Object System.Windows.Controls.TextBlock
-        $n.Text = (T $p.Name); $n.Foreground = '#ECEFF4'; $n.FontSize = 12.5; $n.TextWrapping = 'Wrap'
-        $d = New-Object System.Windows.Controls.TextBlock
-        $d.Text = (T $p.Why); $d.Foreground = '#7C8694'; $d.FontSize = 11.5; $d.TextWrapping = 'Wrap'; $d.Margin = '0,2,0,0'
-        $null = $sp.Children.Add($n); $null = $sp.Children.Add($d)
-        # Красная строка без объяснения — это «просто не работает».
-        # Говорим, почему, и что сделает «Починить».
-        if ($auto -and $p.On -eq $false) {
-            $why = Get-CgPartFixText $p.Key
-            $r = New-Object System.Windows.Controls.TextBlock
-            $r.Text = $why; $r.Foreground = '#FFB340'; $r.FontSize = 11.5; $r.TextWrapping = 'Wrap'; $r.Margin = '0,3,0,0'
-            $null = $sp.Children.Add($r)
+
+        $head = New-Object System.Windows.Controls.StackPanel
+        $head.Orientation = 'Horizontal'
+        $dot = New-Object System.Windows.Shapes.Ellipse
+        $dot.Width = 8; $dot.Height = 8; $dot.Margin = '0,0,12,0'; $dot.VerticalAlignment = 'Center'
+        $dot.Fill = $(if ($p.On -eq $true) { if ($auto) { '#4ADE80' } else { '#2C5A3B' } } elseif ($broken) { '#FF5E5E' } else { '#3A404A' })
+        $title = $script:CgPartTitle[$p.Key]; if (-not $title) { $title = $p.Name }
+        $null = $head.Children.Add($dot)
+        $null = $head.Children.Add((New-CgText (T $title) 14.5 '#ECEFF4'))
+        $null = $sp.Children.Add($head)
+
+        $line = $script:CgPartShort[$p.Key]; if (-not $line) { $line = $p.Why }
+        if ($p.Key -eq 'agents' -and $agentsNote) { $line = $agentsNote + ' · ' + $line }
+        $lt = New-CgText (T $line) 12.5 '#A3ACB9' '20,6,0,0'
+        $lt.ToolTip = (T $p.Why)
+        $null = $sp.Children.Add($lt)
+
+        if ($broken) {
+            $null = $sp.Children.Add((New-CgText (Get-CgPartFixText $p.Key) 12.5 '#FFB340' '20,10,0,0'))
+        } elseif ($p.On -eq $null) {
+            $null = $sp.Children.Add((New-CgText (T 'состояние видно только администратору') 12 '#7C8694' '20,8,0,0'))
         }
-        [System.Windows.Controls.Grid]::SetColumn($sp, 1)
-        $s2 = New-Object System.Windows.Controls.TextBlock
-        $s2.Text = $state; $s2.Foreground = $color; $s2.FontSize = 11.5; $s2.Margin = '14,1,0,0'
-        [System.Windows.Controls.Grid]::SetColumn($s2, 2)
-        $null = $g.Children.Add($dot); $null = $g.Children.Add($sp); $null = $g.Children.Add($s2)
-        $null = $ui.AutoParts.Children.Add($g)
+        $tile.Child = $sp
+        $null = $ui.AutoParts.Children.Add($tile)
     }
-    if ($auto) {
-        if ($bad) {
-            $ui.AutoSub.Text = ((T 'Включена, но не работает частей: {0}. Сторож вернёт их в течение минуты; если не вернул — откройте список.') -f $bad)
-            $ui.AutoSub.Foreground = '#FFB340'
-        } else {
-            $ui.AutoSub.Text = (T 'Включена. Помнит это после перезагрузки и обновления и сама включает обратно то, что выключили.')
-            $ui.AutoSub.Foreground = '#7C8694'
-        }
-        $ui.AutoPartsHint.Text = (T 'Сторож проверяет каждую часть раз в минуту. Тревоги видны в мониторе и после перезапуска — они хранятся на диске.')
+
+    $total = @($st).Count
+    $ui.AutoCount.Text = ((T 'ЧТО РАБОТАЕТ · {0} ИЗ {1}') -f $ok, $total)
+    if (-not $auto) {
+        $ui.ProtHead.Text = (T 'Защита выключена')
+        $ui.ProtHead.Foreground = '#A3ACB9'
+        $ui.AutoSub.Text = (T 'Включите автозащиту — всё наблюдение заработает разом, будет стартовать вместе с Windows и само включаться обратно.')
+    } elseif ($bad) {
+        $ui.ProtHead.Text = $(if ($bad -eq 1) { (T '1 часть не работает') } else { ((T '{0} части не работают') -f $bad) })
+        $ui.ProtHead.Foreground = '#FFB340'
+        $ui.AutoSub.Text = (T 'Причина — на плите. «Починить всё» один раз попросит права администратора и включит то, что выключено.')
     } else {
-        $ui.AutoSub.Text = (T 'Выключена. Включите — и всё наблюдение заработает разом и будет включаться само.')
-        $ui.AutoSub.Foreground = '#7C8694'
-        $ui.AutoPartsHint.Text = (T 'Всё это включится одним переключателем справа.')
+        $ui.ProtHead.Text = (T 'Защищено')
+        $ui.ProtHead.Foreground = '#ECEFF4'
+        $ui.AutoSub.Text = (T 'Автозащита включена. Сторож проверяет каждую часть раз в минуту и сам включает обратно то, что выключили.')
     }
-    if ($unknown -and -not $app.IsAdmin) { $ui.AutoPartsHint.Text += ' ' + (T 'Часть состояния видна только с правами администратора.') }
+    $g = Get-CgGuardInfo
+    $ui.AutoPartsHint.Text = $(if ($g.Alive) { (T 'сторож отметился {0} с назад') -f [int]$g.Age } else { (T 'сторож не отвечает') })
+    if ($unknown -and -not $app.IsAdmin) { $ui.AutoPartsHint.Text += ' · ' + (T 'без прав администратора видно не всё') }
     $ui.BtnAutoFix.Visibility = $(if ($auto -and $bad) { 'Visible' } else { 'Collapsed' })
+    $ui.AutoNeutrState.Text = $(if ($ui.ChkAutoNeutr.IsChecked) { (T 'включён · изымает без вопроса') } else { (T 'выключен · всегда спросит') })
 }
 
 function Get-CgPartFixText {
@@ -2517,7 +2666,7 @@ function Get-CgPartFixText {
         'guard'    { return (T 'Задачи сторожа нет. «Починить» поставит её.') }
         'alive'    {
             $g = Get-CgGuardInfo
-            if ($g.Alive) { return (T 'Сторож работает на старой версии: обновление ставило прежнее окно, которое не умело его перезапускать. «Починить» перезапустит его.') }
+            if ($g.Alive) { return (T 'Работает старая версия. «Починить» перезапустит сторожа.') }
             return (T 'Сторож не отвечает. «Починить» запустит его заново.')
         }
         'watchdog' { return (T 'Задачи наблюдателя нет. «Починить» создаст её.') }
@@ -2525,6 +2674,84 @@ function Get-CgPartFixText {
         default    { return (T 'Выключено. «Починить» включит; дальше за этим следит сторож.') }
     }
 }
+
+# Меню «⋯» у строки настройки. Действие хранится в DataContext
+# пункта, а не в замыкании: GetNewClosure и $script: уже однажды
+# сломали все диалоги программы.
+function Add-CgMoreMenu {
+    param($Button, $Items)
+    $Button.Tag = $Items
+    $Button.Add_Click({
+        param($s, $e)
+        $list = $s.Tag
+        if ($list -is [scriptblock]) { $list = & $list }
+        $menu = New-Object System.Windows.Controls.ContextMenu
+        foreach ($d in @($list)) {
+            $mi = New-Object System.Windows.Controls.MenuItem
+            $mi.Header = (T "$($d.Text)")
+            $mi.DataContext = $d.Action
+            $mi.Add_Click({ param($m, $a) & $m.DataContext })
+            $null = $menu.Items.Add($mi)
+        }
+        $menu.PlacementTarget = $s
+        $menu.Placement = 'Bottom'
+        $menu.IsOpen = $true
+    })
+}
+
+Add-CgMoreMenu $ui.BtnDnsMore @(
+    @{ Text = 'Вернуть прежний DNS'; Action = { Invoke-CgButton $ui.BtnDnsOff } }
+    @{ Text = 'Проверить, что фильтр работает'; Action = { Invoke-CgButton $ui.BtnDnsTest } }
+)
+# «Выбрать…» — список наборов: щелчок по набору и включает его
+Add-CgMoreMenu $ui.BtnDnsMain {
+    $items = @()
+    for ($i = 0; $i -lt $ui.CmbDns.Items.Count; $i++) {
+        $it = $ui.CmbDns.Items[$i]
+        $items += @{ Text = "$($it.Content)"; Action = [scriptblock]::Create("`$ui.CmbDns.SelectedIndex = $i; Invoke-CgButton `$ui.BtnDnsOn") }
+    }
+    $items
+}
+Add-CgMoreMenu $ui.BtnAdMore @(
+    @{ Text = 'Обновить списки рекламы'; Action = { Invoke-CgButton $ui.BtnAdLists } }
+    @{ Text = 'Открыть папку расширения'; Action = { Invoke-CgButton $ui.BtnAdFolder } }
+)
+Add-CgMoreMenu $ui.BtnVtMore @(
+    @{ Text = 'Задать ключ VirusTotal'; Action = { Invoke-CgButton $ui.BtnVtKey } }
+    @{ Text = 'Получить ключ на сайте'; Action = { Invoke-CgButton $ui.BtnVtSite } }
+)
+Add-CgMoreMenu $ui.BtnBaseMore @(
+    @{ Text = 'Снять эталон заново'; Action = { Invoke-CgButton $ui.BtnBaseNew } }
+)
+Add-CgMoreMenu $ui.BtnUpdMore @(
+    @{ Text = 'Проверить, есть ли новая версия'; Action = { Invoke-CgButton $ui.BtnUpdCheck } }
+    @{ Text = 'Ключ GitHub'; Action = { Invoke-CgButton $ui.BtnUpdToken } }
+)
+
+# Авто-карантин помнится и доходит до сторожа сразу
+$ui.ChkAutoNeutr.Add_Click({
+    $on = [bool]$ui.ChkAutoNeutr.IsChecked
+    $null = Set-CgSetting 'AutoNeutralize' $on
+    if ($app.IsAdmin -and (Test-CgGuardAlive)) { $null = Restart-CgGuard }
+    $ui.AutoNeutrState.Text = $(if ($on) { (T 'включён · изымает без вопроса') } else { (T 'выключен · всегда спросит') })
+    Write-CgLog 'INFO' ("Авто-карантин: " + $(if ($on) { 'включён' } else { 'выключен' }))
+})
+
+# Масштаб окна
+$ui.CmbScale.Add_SelectionChanged({
+    $it = $ui.CmbScale.SelectedItem
+    if (-not $it -or $script:CgScaleInit) { return }
+    $v = [double]::Parse("$($it.Tag)", [Globalization.CultureInfo]::InvariantCulture)
+    $null = Set-CgSetting 'UiScale' $v
+    $ui.ScaleState.Text = $(if ($v -eq $script:CgUiScale) { (T 'сейчас') } else { (T 'после перезапуска окна') })
+    if ($v -ne $script:CgUiScale) { $ui.BtnLangRestart.Visibility = 'Visible'; $ui.BtnLangRestart.Content = (T 'Перезапустить') }
+})
+$script:CgScaleInit = $true
+foreach ($it in $ui.CmbScale.Items) {
+    if ([math]::Abs([double]::Parse("$($it.Tag)", [Globalization.CultureInfo]::InvariantCulture) - $script:CgUiScale) -lt 0.01) { $ui.CmbScale.SelectedItem = $it }
+}
+$script:CgScaleInit = $false
+$ui.ScaleState.Text = (T 'сейчас')
 
 $ui.BtnAutoFix.Add_Click({
     Set-Busy $true 'Чиню автозащиту...'
@@ -2537,14 +2764,7 @@ $ui.BtnAutoFix.Add_Click({
     Update-CgAutoUi
 })
 
-$ui.BtnAutoMore.Add_Click({
-    if ($ui.AutoPartsBox.Visibility -eq 'Visible') {
-        $ui.AutoPartsBox.Visibility = 'Collapsed'; $ui.BtnAutoMore.Content = (T 'Что включено ▾')
-    } else {
-        Update-CgAutoUi
-        $ui.AutoPartsBox.Visibility = 'Visible'; $ui.BtnAutoMore.Content = (T 'Свернуть ▴')
-    }
-})
+# Плиты автозащиты видны всегда: прятать состояние защиты за кнопкой незачем.
 
 $ui.TglAuto.Add_Click({
     if ($script:CgTogglesSyncing) { return }
@@ -2624,7 +2844,7 @@ $cgRowMenu = {
     )
 }
 
-foreach ($g in @($ui.GridMon, $ui.GridFind, $ui.GridProc, $ui.GridExt, $ui.GridAuto, $ui.GridRun, $ui.SbGrid)) {
+foreach ($g in @($ui.GridMon, $ui.GridFind, $ui.GridProc, $ui.GridExt, $ui.GridAuto, $ui.GridRun, $ui.SbGrid, $ui.GridNet, $ui.GridApp)) {
     Add-CgRowMenu $g $cgRowMenu
 }
 
@@ -2691,6 +2911,7 @@ function Invoke-CgLateInit {
     if ($gi.Alive -and -not (Test-CgGuardCurrent) -and $app.IsAdmin) {
         if (Restart-CgGuard) { Write-CgLog 'INFO' 'Сторож работал на старой версии — перезапущен из окна' }
     }
+    $ui.ChkAutoNeutr.IsChecked = [bool](Get-CgSettings).AutoNeutralize
     Update-CgAutoUi
     # Прошлые события — из летописи на диске: список не начинается с
     # пустоты после перезапуска, перезагрузки или обновления

@@ -73,6 +73,52 @@ $script:CgMainXaml = @'
       <Setter Property="FontSize" Value="13.5"/>
     </Style>
 
+    <!-- Защита 3.0: строка настройки. Слева — что это, посередине —
+         состояние, справа — одна кнопка одной ширины и «⋯». Кнопка
+         всегда в одном месте: глаз не ищет её по строке. -->
+    <Style x:Key="SetRow" TargetType="Border">
+      <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+      <Setter Property="BorderThickness" Value="0,0,0,1"/>
+      <Setter Property="Padding" Value="24,18"/>
+      <Setter Property="MinHeight" Value="78"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="{StaticResource HoverBg}"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+    <Style x:Key="SetState" TargetType="TextBlock">
+      <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="LineHeight" Value="18"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Margin" Value="0,0,20,0"/>
+    </Style>
+    <Style x:Key="SetBtn" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Height" Value="36"/>
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="MoreBtn" TargetType="Button" BasedOn="{StaticResource IconBtn}">
+      <Setter Property="Width" Value="36"/>
+      <Setter Property="Height" Value="36"/>
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="HorizontalAlignment" Value="Right"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+    </Style>
+    <!-- плита части автозащиты -->
+    <Style x:Key="PartTile" TargetType="Border">
+      <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+      <Setter Property="BorderThickness" Value="0,0,1,1"/>
+      <Setter Property="Padding" Value="22,20"/>
+      <Setter Property="MinHeight" Value="124"/>
+    </Style>
+
     <Style x:Key="PageHead" TargetType="StackPanel">
       <Setter Property="Margin" Value="0,0,0,20"/>
     </Style>
@@ -261,30 +307,36 @@ $script:CgMainXaml = @'
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="05" Style="{StaticResource NavNum}"/>
-                  <TextBlock Text="Находки" Tag="navlabel" VerticalAlignment="Center"/>
+                  <TextBlock Text="Сеть" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="06" Style="{StaticResource NavNum}"/>
-                  <TextBlock Text="Процессы" Tag="navlabel" VerticalAlignment="Center"/>
+                  <TextBlock Text="Находки" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="07" Style="{StaticResource NavNum}"/>
-                  <TextBlock Text="Расширения" Tag="navlabel" VerticalAlignment="Center"/>
+                  <TextBlock Text="Процессы" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="08" Style="{StaticResource NavNum}"/>
-                  <TextBlock Text="Автозапуск" Tag="navlabel" VerticalAlignment="Center"/>
+                  <TextBlock Text="Расширения" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="09" Style="{StaticResource NavNum}"/>
+                  <TextBlock Text="Автозапуск" Tag="navlabel" VerticalAlignment="Center"/>
+                </StackPanel>
+              </ListBoxItem>
+              <ListBoxItem>
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="10" Style="{StaticResource NavNum}"/>
                   <TextBlock Text="Запуски" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
@@ -292,19 +344,25 @@ $script:CgMainXaml = @'
               <ListBoxItem x:Name="NavHeadAnalyse" Content="РАЗБОР" Style="{StaticResource NavHeader}"/>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="10" Style="{StaticResource NavNum}"/>
-                  <TextBlock Text="Карантин" Tag="navlabel" VerticalAlignment="Center"/>
-                </StackPanel>
-              </ListBoxItem>
-              <ListBoxItem>
-                <StackPanel Orientation="Horizontal">
                   <TextBlock Text="11" Style="{StaticResource NavNum}"/>
-                  <TextBlock Text="Доверенные" Tag="navlabel" VerticalAlignment="Center"/>
+                  <TextBlock Text="AppData" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
               <ListBoxItem>
                 <StackPanel Orientation="Horizontal">
                   <TextBlock Text="12" Style="{StaticResource NavNum}"/>
+                  <TextBlock Text="Карантин" Tag="navlabel" VerticalAlignment="Center"/>
+                </StackPanel>
+              </ListBoxItem>
+              <ListBoxItem>
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="13" Style="{StaticResource NavNum}"/>
+                  <TextBlock Text="Доверенные" Tag="navlabel" VerticalAlignment="Center"/>
+                </StackPanel>
+              </ListBoxItem>
+              <ListBoxItem>
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="14" Style="{StaticResource NavNum}"/>
                   <TextBlock Text="Журнал" Tag="navlabel" VerticalAlignment="Center"/>
                 </StackPanel>
               </ListBoxItem>
@@ -451,228 +509,177 @@ $script:CgMainXaml = @'
         <!-- ========== ЗАЩИТА ========== -->
         <TabItem Header="Защита">
           <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="32,26,32,24">
-              <StackPanel Style="{StaticResource PageHead}">
-                <TextBlock Text="02 — ЗАЩИТА" Style="{StaticResource Kicker}"/>
-                <TextBlock Text="Защита" Style="{StaticResource H1}"/>
-                <TextBlock Text="Что программа делает постоянно, без вашего участия." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
+            <!-- Защита 3.0. Было: десять строк, у каждой свой набор кнопок
+                 разного вида, рассыпанных как придётся. Стало три яруса:
+                 одна фраза о состоянии и одно действие; плиты частей
+                 автозащиты; настройки — строки одного устройства: слева что
+                 это, посередине состояние, справа ровно одна кнопка в одном
+                 и том же месте, остальное — в меню «⋯». -->
+            <StackPanel Margin="44,36,44,36" MaxWidth="1180" HorizontalAlignment="Stretch">
+
+              <!-- 1. состояние и главное действие -->
+              <Grid Margin="0,0,0,30">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,24,0">
+                  <TextBlock Text="02 — ЗАЩИТА" Style="{StaticResource Kicker}"/>
+                  <TextBlock x:Name="ProtHead" Text="Защита" Style="{StaticResource H1}" FontSize="36" TextWrapping="Wrap"/>
+                  <TextBlock x:Name="AutoSub" Text="" Style="{StaticResource Sub}" FontSize="13.5" LineHeight="21" MaxWidth="660"
+                             HorizontalAlignment="Left" Margin="0,10,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
+                  <Button x:Name="BtnAutoFix" Content="Починить всё" Style="{StaticResource Primary}" Height="44" MinWidth="150"
+                          FontSize="14" Visibility="Collapsed" Margin="0,0,12,0"/>
+                  <Border Height="44" Padding="18,0,14,0" CornerRadius="3" Background="{StaticResource ControlBg}"
+                          BorderBrush="{StaticResource StrongLine}" BorderThickness="1">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                      <TextBlock Text="Автозащита" FontSize="14" Foreground="{StaticResource Text}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                      <CheckBox x:Name="TglAuto" Style="{StaticResource Toggle}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </Grid>
+
+              <!-- 2. из чего состоит защита: плиты с живым состоянием -->
+              <StackPanel x:Name="AutoPartsBox">
+                <Grid Margin="0,0,0,12">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <TextBlock x:Name="AutoCount" Text="ЧТО РАБОТАЕТ" Style="{StaticResource GroupLabel}" Margin="0"/>
+                  <TextBlock x:Name="AutoPartsHint" Grid.Column="1" Text="" Style="{StaticResource Stat}"/>
+                </Grid>
+                <Border BorderBrush="{StaticResource Line}" BorderThickness="1,1,0,0">
+                  <UniformGrid x:Name="AutoParts" Columns="3"/>
+                </Border>
               </StackPanel>
 
-              <TextBlock Text="ГЛАВНОЕ" Style="{StaticResource GroupLabel}"/>
-
-              <!-- Один переключатель на всё. Под ним — список того, что он
-                   включает, с живым состоянием каждой части: так видно не
-                   «защита включена», а что именно работает и что нет. -->
-              <Border Style="{StaticResource CardRow}" Margin="0,0,0,26">
+              <!-- 3. настройки: одно устройство строки на всё -->
+              <TextBlock Text="НАСТРОЙКИ" Style="{StaticResource GroupLabel}" Margin="0,40,0,12"/>
+              <Border BorderBrush="{StaticResource Line}" BorderThickness="1,1,1,0" Background="{StaticResource CardBg}">
                 <StackPanel>
-                  <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                    <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xEA18;" Style="{StaticResource SettingIconGlyph}"/></Border>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                      <TextBlock Text="Автозащита" Style="{StaticResource SettingName}"/>
-                      <TextBlock x:Name="AutoSub" Text="Всё наблюдение одним переключателем. Помнит, что включено, стартует вместе с Windows и само включает обратно то, что выключили." Style="{StaticResource Sub}" Margin="0,3,0,0"/>
+
+                  <Border Style="{StaticResource SetRow}"><Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="*"/><ColumnDefinition Width="170"/><ColumnDefinition Width="44"/></Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Text="Авто-карантин" Style="{StaticResource SettingName}"/>
+                      <TextBlock Text="Сразу прятать то, что VirusTotal знает как вредоносное (5+ детектов)." Style="{StaticResource Sub}" Margin="0,4,16,0"/>
                     </StackPanel>
-                    <Button x:Name="BtnAutoFix" Grid.Column="2" Content="Починить" Visibility="Collapsed" Margin="14,0,0,0"/>
-                    <Button x:Name="BtnAutoMore" Grid.Column="3" Content="Что включено ▾" Style="{StaticResource Ghost}" Margin="14,0,0,0"/>
-                    <CheckBox x:Name="TglAuto" Grid.Column="4" Style="{StaticResource Toggle}" Margin="14,0,0,0"/>
-                  </Grid>
-                  <StackPanel x:Name="AutoPartsBox" Visibility="Collapsed" Margin="0,16,0,0">
-                    <Border Height="1" Background="{StaticResource Line}" Margin="0,0,0,12"/>
-                    <StackPanel x:Name="AutoParts"/>
-                    <TextBlock x:Name="AutoPartsHint" Style="{StaticResource Sub}" Margin="0,10,0,0"/>
-                  </StackPanel>
-                </StackPanel>
-              </Border>
+                    <TextBlock Grid.Column="1" x:Name="AutoNeutrState" Text="" Style="{StaticResource SetState}"/>
+                    <CheckBox Grid.Column="2" x:Name="ChkAutoNeutr" Style="{StaticResource Toggle}" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                  </Grid></Border>
 
-              <TextBlock Text="НАБЛЮДЕНИЕ ПО ОТДЕЛЬНОСТИ" Style="{StaticResource GroupLabel}"/>
+                  <Border Style="{StaticResource SetRow}"><Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="*"/><ColumnDefinition Width="170"/><ColumnDefinition Width="44"/></Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Text="Фильтрующий DNS" Style="{StaticResource SettingName}"/>
+                      <TextBlock Text="Реклама, трекеры и вредоносные сайты отсекаются ещё до соединения." Style="{StaticResource Sub}" Margin="0,4,16,0"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" x:Name="DnsStats" Text="" Style="{StaticResource SetState}"/>
+                    <Button Grid.Column="2" x:Name="BtnDnsMain" Content="Выбрать…" Style="{StaticResource SetBtn}"/>
+                    <Button Grid.Column="3" x:Name="BtnDnsMore" Content="&#xE712;" Style="{StaticResource MoreBtn}" ToolTip="Ещё"/>
+                  </Grid></Border>
 
-              <Border Style="{StaticResource CardRow}">
-                <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE72E;" Style="{StaticResource SettingIconGlyph}"/></Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="Аудит доступа к cookie" Style="{StaticResource SettingName}"/>
-                    <TextBlock x:Name="AuditSub" Text="Windows записывает, какая программа открыла базу cookie или паролей." Style="{StaticResource Sub}" Margin="0,3,0,0"/>
-                  </StackPanel>
-                  <CheckBox x:Name="TglAudit" Grid.Column="2" Style="{StaticResource Toggle}" Margin="14,0,0,0"/>
-                </Grid>
-              </Border>
+                  <Border Style="{StaticResource SetRow}"><Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="*"/><ColumnDefinition Width="170"/><ColumnDefinition Width="44"/></Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Text="Блокировщик рекламы" Style="{StaticResource SettingName}"/>
+                      <TextBlock Text="Своё расширение для Chrome, Edge и Brave." Style="{StaticResource Sub}" Margin="0,4,16,0"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" x:Name="AdStats" Text="" Style="{StaticResource SetState}"/>
+                    <Button Grid.Column="2" x:Name="BtnAdInstall" Content="Подключить" Style="{StaticResource SetBtn}"/>
+                    <Button Grid.Column="3" x:Name="BtnAdMore" Content="&#xE712;" Style="{StaticResource MoreBtn}" ToolTip="Ещё"/>
+                  </Grid></Border>
 
-              <Border Style="{StaticResource CardRow}">
-                <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE81C;" Style="{StaticResource SettingIconGlyph}"/></Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="Журнал запуска программ" Style="{StaticResource SettingName}"/>
-                    <TextBlock Text="Без него не видно, кто запустил процесс и с какой командной строкой." Style="{StaticResource Sub}" Margin="0,3,0,0"/>
-                  </StackPanel>
-                  <Button x:Name="BtnProcAudit2" Grid.Column="2" Content="Включить" Margin="14,0,0,0"/>
-                </Grid>
-              </Border>
+                  <Border Style="{StaticResource SetRow}"><Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="*"/><ColumnDefinition Width="170"/><ColumnDefinition Width="44"/></Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Text="VirusTotal" Style="{StaticResource SettingName}"/>
+                      <TextBlock Text="Что 70 антивирусов говорят о файлах на диске. Наружу уходит только отпечаток." Style="{StaticResource Sub}" Margin="0,4,16,0"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" x:Name="VtStats" Text="" Style="{StaticResource SetState}"/>
+                    <Button Grid.Column="2" x:Name="BtnVtScan" Content="Проверить файлы" Style="{StaticResource SetBtn}"/>
+                    <Button Grid.Column="3" x:Name="BtnVtMore" Content="&#xE712;" Style="{StaticResource MoreBtn}" ToolTip="Ещё"/>
+                  </Grid></Border>
 
-              <Border Style="{StaticResource CardRow}">
-                <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE768;" Style="{StaticResource SettingIconGlyph}"/></Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="Постоянная защита" Style="{StaticResource SettingName}"/>
-                    <TextBlock x:Name="GuardStats" Text="" Style="{StaticResource Sub}" Margin="0,3,0,0"/>
-                  </StackPanel>
-                  <CheckBox x:Name="TglGuard" Grid.Column="2" Style="{StaticResource Toggle}" Margin="14,0,0,0"/>
-                </Grid>
-              </Border>
+                  <Border Style="{StaticResource SetRow}"><Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="*"/><ColumnDefinition Width="170"/><ColumnDefinition Width="44"/></Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Text="Эталон системы" Style="{StaticResource SettingName}"/>
+                      <TextBlock Text="Снимок автозапуска, расширений, сертификатов и сети: с ним видно, что поменялось." Style="{StaticResource Sub}" Margin="0,4,16,0"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" x:Name="BaseStats" Text="" Style="{StaticResource SetState}"/>
+                    <Button Grid.Column="2" x:Name="BtnBaseDiff" Content="Сверить" Style="{StaticResource SetBtn}"/>
+                    <Button Grid.Column="3" x:Name="BtnBaseMore" Content="&#xE712;" Style="{StaticResource MoreBtn}" ToolTip="Ещё"/>
+                  </Grid></Border>
 
-              <Border Style="{StaticResource CardRow}" Margin="0,0,0,26">
-                <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE74D;" Style="{StaticResource SettingIconGlyph}"/></Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="Сразу прятать подтверждённое вредоносное" Style="{StaticResource SettingName}"/>
-                    <TextBlock Text="Только для файлов, которые VirusTotal уже знает как вредоносные: 5 и более детектов. Остальное — всегда с вашего согласия." Style="{StaticResource Sub}" Margin="0,3,0,0"/>
-                  </StackPanel>
-                  <CheckBox x:Name="ChkAutoNeutr" Grid.Column="2" Style="{StaticResource Toggle}" Margin="14,0,0,0"/>
-                </Grid>
-              </Border>
+                  <Border Style="{StaticResource SetRow}"><Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="*"/><ColumnDefinition Width="170"/><ColumnDefinition Width="44"/></Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Text="Версия программы" Style="{StaticResource SettingName}"/>
+                      <TextBlock Text="Откуда приходит обновление и где лежит программа — наведите." Style="{StaticResource Sub}" Margin="0,4,16,0"
+                                 ToolTip="{Binding Text, ElementName=UpdWhere}"/>
+                      <TextBlock x:Name="UpdWhere" Text="" Visibility="Collapsed"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" x:Name="UpdStats" Text="" Style="{StaticResource SetState}"/>
+                    <Button Grid.Column="2" x:Name="BtnUpdInstall" Content="Обновить" Style="{StaticResource SetBtn}"/>
+                    <Button Grid.Column="3" x:Name="BtnUpdMore" Content="&#xE712;" Style="{StaticResource MoreBtn}" ToolTip="Ещё"/>
+                  </Grid></Border>
 
-              <TextBlock Text="ПРОВЕРКИ" Style="{StaticResource GroupLabel}"/>
+                  <Border Style="{StaticResource SetRow}"><Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="*"/><ColumnDefinition Width="170"/><ColumnDefinition Width="44"/></Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Text="Масштаб окна" Style="{StaticResource SettingName}"/>
+                      <TextBlock Text="Крупнее — легче читать. Включится после перезапуска окна." Style="{StaticResource Sub}" Margin="0,4,16,0"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" x:Name="ScaleState" Text="" Style="{StaticResource SetState}"/>
+                    <ComboBox Grid.Column="2" x:Name="CmbScale" Height="36" VerticalAlignment="Center">
+                      <ComboBoxItem Content="100 %" Tag="1.0"/>
+                      <ComboBoxItem Content="110 %" Tag="1.1"/>
+                      <ComboBoxItem Content="125 %" Tag="1.25"/>
+                      <ComboBoxItem Content="140 %" Tag="1.4"/>
+                    </ComboBox>
+                  </Grid></Border>
 
-              <Border Style="{StaticResource CardRow}">
-                <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE8A1;" Style="{StaticResource SettingIconGlyph}"/></Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="Эталон системы" Style="{StaticResource SettingName}"/>
-                    <TextBlock x:Name="BaseStats" Text="" Style="{StaticResource Sub}" Margin="0,3,0,0"/>
-                  </StackPanel>
-                  <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
-                    <Button x:Name="BtnBaseNew"  Content="Снять заново" Style="{StaticResource Ghost}"/>
-                    <Button x:Name="BtnBaseDiff" Content="Сверить" Margin="0"/>
-                  </StackPanel>
-                </Grid>
-              </Border>
-
-              <Border Style="{StaticResource CardRow}">
-                <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE774;" Style="{StaticResource SettingIconGlyph}"/></Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="VirusTotal" Style="{StaticResource SettingName}"/>
-                    <TextBlock x:Name="VtStats" Text="" Style="{StaticResource Sub}" Margin="0,3,0,0"/>
-                  </StackPanel>
-                  <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
-                    <Button x:Name="BtnVtScan" Content="Проверить файлы"/>
-                    <Button x:Name="BtnVtKey"  Content="Ключ" Style="{StaticResource Ghost}"/>
-                    <Button x:Name="BtnVtSite" Content="Получить ключ" Style="{StaticResource Ghost}" Margin="0"/>
-                  </StackPanel>
-                </Grid>
-              </Border>
-
-              <Border Style="{StaticResource CardRow}" Margin="0,0,0,26">
-                <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*" MinWidth="200"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE968;" Style="{StaticResource SettingIconGlyph}"/></Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="Безопасный сёрфинг через фильтрующий DNS" Style="{StaticResource SettingName}"/>
-                    <TextBlock x:Name="DnsStats" Text="" Style="{StaticResource Sub}" Margin="0,3,0,0"/>
-                  </StackPanel>
-                  <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
-                    <ComboBox x:Name="CmbDns" Width="170" Margin="0,0,8,0"/>
-                    <Button x:Name="BtnDnsOn"   Content="Включить"/>
-                    <Button x:Name="BtnDnsOff"  Content="Вернуть" Style="{StaticResource Ghost}"/>
-                    <Button x:Name="BtnDnsTest" Content="Проверить" Style="{StaticResource Ghost}" Margin="0"/>
-                  </StackPanel>
-                </Grid>
-              </Border>
-
-              <TextBlock Text="ОБНОВЛЕНИЕ" Style="{StaticResource GroupLabel}"/>
-
-              <Border Style="{StaticResource CardRow}" Margin="0,0,0,26">
-                <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE896;" Style="{StaticResource SettingIconGlyph}"/></Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="Версия программы" Style="{StaticResource SettingName}"/>
-                    <TextBlock x:Name="UpdStats" Text="" Style="{StaticResource Sub}" Margin="0,3,0,0"/>
-                    <!-- Откуда запущена эта копия и откуда придёт обновление.
-                         Без этого правки, сделанные в другой папке или не
-                         отправленные на GitHub, выглядят как «обновление не
-                         работает», хотя кнопка честно ставит то, что видит. -->
-                    <TextBlock x:Name="UpdWhere" Text="" Style="{StaticResource Stat}" FontSize="11" TextWrapping="Wrap"
-                               LineHeight="17" Margin="0,6,0,0"/>
-                  </StackPanel>
-                  <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
-                    <Button x:Name="BtnUpdCheck"   Content="Проверить"/>
-                    <Button x:Name="BtnUpdInstall" Content="Обновить" Style="{StaticResource Primary}"/>
-                    <Button x:Name="BtnUpdToken"   Content="Ключ GitHub" Style="{StaticResource Ghost}" Margin="0"/>
-                  </StackPanel>
-                </Grid>
-              </Border>
-
-              <TextBlock Text="ИНТЕРФЕЙС" Style="{StaticResource GroupLabel}"/>
-
-              <!-- Подпись двуязычная: найти переключатель должен и тот,
-                   кто не читает язык, на котором сейчас окно. -->
-              <Border Style="{StaticResource CardRow}" Margin="0,0,0,26">
-                <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE8C1;" Style="{StaticResource SettingIconGlyph}"/></Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="Язык интерфейса · Interface language" Style="{StaticResource SettingName}"/>
-                    <TextBlock x:Name="LangSub" Text="Новый язык включится после перезапуска окна." Style="{StaticResource Sub}" Margin="0,3,0,0"/>
-                  </StackPanel>
-                  <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
-                    <ComboBox x:Name="CmbLang" Width="130" Margin="0">
+                  <!-- Подпись двуязычная: найти переключатель должен и тот,
+                       кто не читает язык, на котором сейчас окно. -->
+                  <Border Style="{StaticResource SetRow}"><Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="*"/><ColumnDefinition Width="170"/><ColumnDefinition Width="44"/></Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Text="Язык · Language" Style="{StaticResource SettingName}"/>
+                      <TextBlock x:Name="LangSub" Text="Новый язык включится после перезапуска окна." Style="{StaticResource Sub}" Margin="0,4,16,0"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" x:Name="BtnLangRestart" Content="Перезапустить" Style="{StaticResource SetBtn}" Width="150"
+                            HorizontalAlignment="Right" Margin="0,0,12,0" Visibility="Collapsed"/>
+                    <ComboBox Grid.Column="2" x:Name="CmbLang" Height="36" VerticalAlignment="Center">
                       <ComboBoxItem Content="Русский" Tag="ru"/>
                       <ComboBoxItem Content="English" Tag="en"/>
                     </ComboBox>
-                    <Button x:Name="BtnLangRestart" Content="Перезапустить" Style="{StaticResource Primary}" Margin="8,0,0,0" Visibility="Collapsed"/>
-                  </StackPanel>
-                </Grid>
+                  </Grid></Border>
+
+                  <Border Style="{StaticResource SetRow}"><Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="*"/><ColumnDefinition Width="170"/><ColumnDefinition Width="44"/></Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock Text="Если что-то не включается" Style="{StaticResource SettingName}"/>
+                      <TextBlock Text="Права, политика аудита, службы, журнал безопасности, файлы браузеров — и причина." Style="{StaticResource Sub}" Margin="0,4,16,0"/>
+                    </StackPanel>
+                    <Button Grid.Column="2" x:Name="BtnDiag" Content="Разобраться" Style="{StaticResource SetBtn}"/>
+                  </Grid></Border>
+                </StackPanel>
               </Border>
 
-              <TextBlock Text="БРАУЗЕР" Style="{StaticResource GroupLabel}"/>
-
-              <!-- Свой блокировщик рекламы: расширение из папки adblock.
-                   Браузер подключает его только руками человека — кнопка
-                   готовит всё и открывает нужную страницу. -->
-              <Border Style="{StaticResource CardRow}" Margin="0,0,0,26">
-                <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*" MinWidth="200"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xEA18;" Style="{StaticResource SettingIconGlyph}"/></Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="Блокировщик рекламы" Style="{StaticResource SettingName}"/>
-                    <TextBlock x:Name="AdStats" Text="" Style="{StaticResource Sub}" Margin="0,3,0,0" TextWrapping="Wrap"/>
-                  </StackPanel>
-                  <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="14,0,0,0">
-                    <Button x:Name="BtnAdInstall" Content="Подключить к браузеру" Style="{StaticResource Primary}"/>
-                    <Button x:Name="BtnAdLists"   Content="Обновить списки"/>
-                    <Button x:Name="BtnAdFolder"  Content="Папка" Style="{StaticResource Ghost}" Margin="0"/>
-                  </StackPanel>
-                </Grid>
-              </Border>
-
-              <TextBlock Text="ЕСЛИ ЧТО-ТО НЕ ВКЛЮЧАЕТСЯ" Style="{StaticResource GroupLabel}"/>
-
-              <Border Style="{StaticResource CardRow}" Margin="0,0,0,20">
-                <Grid>
-                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                  <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xE9D9;" Style="{StaticResource SettingIconGlyph}"/></Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="Разобраться, что мешает" Style="{StaticResource SettingName}"/>
-                    <TextBlock Text="Проверит права, политику аудита, службы, журнал безопасности и файлы браузеров — и назовёт причину, по которой переключатель не поддаётся." Style="{StaticResource Sub}" Margin="0,3,0,0"/>
-                  </StackPanel>
-                  <Button x:Name="BtnDiag" Grid.Column="2" Content="Проверить" Margin="14,0,0,0"/>
-                </Grid>
-              </Border>
-
-              <!-- кнопки, оставшиеся от прежнего окна: обработчики
-                   привязаны к ним, а управляют ими переключатели выше -->
-              <StackPanel Orientation="Horizontal" Visibility="Collapsed">
-                <Button x:Name="BtnAudit"/>
-                <Button x:Name="BtnAuditOff"/>
-                <Button x:Name="BtnGuardOn"/>
-                <Button x:Name="BtnGuardOff"/>
-                <Button x:Name="BtnProcAudit"/>
+              <!-- Кнопки и подписи прежнего окна. Обработчики привязаны к
+                   ним, а управляют ими плиты, меню «⋯» и автозащита. -->
+              <StackPanel Visibility="Collapsed">
+                <Button x:Name="BtnAudit"/><Button x:Name="BtnAuditOff"/>
+                <Button x:Name="BtnGuardOn"/><Button x:Name="BtnGuardOff"/>
+                <Button x:Name="BtnProcAudit"/><Button x:Name="BtnProcAudit2"/>
+                <Button x:Name="BtnAutoMore"/>
+                <CheckBox x:Name="TglAudit"/><CheckBox x:Name="TglGuard"/>
+                <TextBlock x:Name="AuditSub"/><TextBlock x:Name="GuardStats"/>
+                <ComboBox x:Name="CmbDns"/>
+                <Button x:Name="BtnDnsOn"/><Button x:Name="BtnDnsOff"/><Button x:Name="BtnDnsTest"/>
+                <Button x:Name="BtnAdLists"/><Button x:Name="BtnAdFolder"/>
+                <Button x:Name="BtnVtKey"/><Button x:Name="BtnVtSite"/>
+                <Button x:Name="BtnBaseNew"/>
+                <Button x:Name="BtnUpdCheck"/><Button x:Name="BtnUpdToken"/>
               </StackPanel>
             </StackPanel>
           </ScrollViewer>
@@ -777,7 +784,7 @@ $script:CgMainXaml = @'
         <TabItem Header="Находки">
           <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
-              <TextBlock Text="05 — НАХОДКИ" Style="{StaticResource Kicker}"/>
+              <TextBlock Text="06 — НАХОДКИ" Style="{StaticResource Kicker}"/>
               <TextBlock Text="Находки" Style="{StaticResource H1}"/>
               <TextBlock Text="Итог проверки системы. Щёлкните строку — справа появится разбор." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
@@ -816,7 +823,7 @@ $script:CgMainXaml = @'
         <TabItem Header="Процессы">
           <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
-              <TextBlock Text="06 — ПРОЦЕССЫ" Style="{StaticResource Kicker}"/>
+              <TextBlock Text="07 — ПРОЦЕССЫ" Style="{StaticResource Kicker}"/>
               <TextBlock Text="Процессы" Style="{StaticResource H1}"/>
               <TextBlock Text="Что сейчас запущено, кем подписано и откуда взялось." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
@@ -860,7 +867,7 @@ $script:CgMainXaml = @'
         <TabItem Header="Расширения">
           <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
-              <TextBlock Text="07 — РАСШИРЕНИЯ" Style="{StaticResource Kicker}"/>
+              <TextBlock Text="08 — РАСШИРЕНИЯ" Style="{StaticResource Kicker}"/>
               <TextBlock Text="Расширения браузеров" Style="{StaticResource H1}"/>
               <TextBlock Text="Расширение с правом читать все сайты видит ваши сессии так же, как вы." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
@@ -892,7 +899,7 @@ $script:CgMainXaml = @'
         <TabItem Header="Автозапуск">
           <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
-              <TextBlock Text="08 — АВТОЗАПУСК" Style="{StaticResource Kicker}"/>
+              <TextBlock Text="09 — АВТОЗАПУСК" Style="{StaticResource Kicker}"/>
               <TextBlock Text="Автозапуск" Style="{StaticResource H1}"/>
               <TextBlock Text="Реестр, папки автозагрузки, задачи планировщика и службы." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
@@ -925,7 +932,7 @@ $script:CgMainXaml = @'
         <TabItem Header="Запуски">
           <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
-              <TextBlock Text="09 — ЗАПУСКИ" Style="{StaticResource Kicker}"/>
+              <TextBlock Text="10 — ЗАПУСКИ" Style="{StaticResource Kicker}"/>
               <TextBlock Text="История запусков" Style="{StaticResource H1}"/>
               <TextBlock Text="Что запускалось за последние часы и кто это запустил." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
@@ -964,7 +971,7 @@ $script:CgMainXaml = @'
         <TabItem Header="Карантин">
           <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
-              <TextBlock Text="10 — КАРАНТИН" Style="{StaticResource Kicker}"/>
+              <TextBlock Text="12 — КАРАНТИН" Style="{StaticResource Kicker}"/>
               <TextBlock Text="Карантин" Style="{StaticResource H1}"/>
               <TextBlock Text="Спрятанные файлы. Запустить их нельзя, вернуть — можно, байт в байт." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
@@ -1004,7 +1011,7 @@ $script:CgMainXaml = @'
         <TabItem Header="Доверенные">
           <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
-              <TextBlock Text="11 — ДОВЕРЕННЫЕ" Style="{StaticResource Kicker}"/>
+              <TextBlock Text="13 — ДОВЕРЕННЫЕ" Style="{StaticResource Kicker}"/>
               <TextBlock Text="Доверенные" Style="{StaticResource H1}"/>
               <TextBlock Text="То, про что вы уже разобрались. Столбец «действует на» показывает, насколько широко." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
@@ -1039,7 +1046,7 @@ $script:CgMainXaml = @'
         <TabItem Header="Журнал">
           <DockPanel Margin="32,26,32,24">
             <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
-              <TextBlock Text="12 — ЖУРНАЛ" Style="{StaticResource Kicker}"/>
+              <TextBlock Text="14 — ЖУРНАЛ" Style="{StaticResource Kicker}"/>
               <TextBlock Text="Журнал" Style="{StaticResource H1}"/>
               <TextBlock Text="Что программа делала и когда." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
             </StackPanel>
@@ -1051,6 +1058,95 @@ $script:CgMainXaml = @'
             </Border>
             <TextBox x:Name="LogBox" Style="{StaticResource Mono}" VerticalScrollBarVisibility="Auto"
                      HorizontalScrollBarVisibility="Auto" TextWrapping="NoWrap"/>
+          </DockPanel>
+        </TabItem>
+
+        <!-- ========== СЕТЬ ==========
+             По одному признаку «хорошо или плохо» не угадать. Поэтому у
+             каждого соединения десять контрольных точек (lib\Network.ps1),
+             а справа, в разборе, — что сказала каждая. -->
+        <TabItem Header="Сеть">
+          <DockPanel Margin="32,26,32,24">
+            <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
+              <TextBlock Text="05 — СЕТЬ" Style="{StaticResource Kicker}"/>
+              <TextBlock Text="Кто куда соединяется" Style="{StaticResource H1}"/>
+              <TextBlock Text="Десять контрольных точек на каждое соединение: подпись, издатель, папка, имя, hosts, канал слива, прокси, возраст файла, VirusTotal, доверие. Вердикт — их сумма." Style="{StaticResource Sub}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+            <Border DockPanel.Dock="Top" Style="{StaticResource ToolStrip}">
+              <WrapPanel>
+                <Button x:Name="BtnNetRefresh" Content="Обновить" Style="{StaticResource Primary}"/>
+                <CheckBox x:Name="ChkNetOnlyBad" Content="только требующие внимания" Margin="12,0,0,0"/>
+              </WrapPanel>
+            </Border>
+            <Border DockPanel.Dock="Bottom" Style="{StaticResource Readout}">
+              <TextBlock x:Name="NetStats" Text="" Style="{StaticResource Stat}" TextTrimming="CharacterEllipsis"/>
+            </Border>
+            <Border Style="{StaticResource GridBox}">
+              <DataGrid x:Name="GridNet">
+                <DataGrid.Columns>
+                  <DataGridTemplateColumn Header="ВЕРДИКТ" Width="104" SortMemberPath="Order" CellTemplate="{StaticResource SevCell}"/>
+                  <DataGridTextColumn Header="ПРОГРАММА" Binding="{Binding Process}" Width="190"/>
+                  <DataGridTextColumn Header="КУДА" Binding="{Binding Where}" Width="280"/>
+                  <DataGridTextColumn Header="ТОЧКИ" Binding="{Binding Score}" Width="80" SortMemberPath="Passed">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
+                  <DataGridTextColumn Header="НЕ ПРОЙДЕНО" Binding="{Binding Failed}" Width="*">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource TextDim}"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
+                </DataGrid.Columns>
+              </DataGrid>
+            </Border>
+          </DockPanel>
+        </TabItem>
+
+        <!-- ========== APPDATA ==========
+             Чёрный ящик, разложенный по полкам: чья папка — по подписи
+             программ внутри, а не по имени (lib\AppData.ps1). -->
+        <TabItem Header="AppData">
+          <DockPanel Margin="32,26,32,24">
+            <StackPanel DockPanel.Dock="Top" Style="{StaticResource PageHead}">
+              <TextBlock Text="11 — APPDATA" Style="{StaticResource Kicker}"/>
+              <TextBlock Text="Что где лежит и чьё это" Style="{StaticResource H1}"/>
+              <TextBlock Text="AppData — место, куда любая программа пишет без прав администратора. Поэтому туда же ставят себя воры паролей и майнеры. Папка подписана тем, чьи программы внутри, и отмечена, если из неё что-то стартует с Windows." Style="{StaticResource Sub}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+            <Border DockPanel.Dock="Top" Style="{StaticResource ToolStrip}">
+              <WrapPanel>
+                <Button x:Name="BtnAppRefresh" Content="Разложить" Style="{StaticResource Primary}"/>
+                <CheckBox x:Name="ChkAppOnlyMarked" Content="только с отметками" Margin="12,0,0,0"/>
+              </WrapPanel>
+            </Border>
+            <Border DockPanel.Dock="Bottom" Style="{StaticResource Readout}">
+              <TextBlock x:Name="AppStats" Text="" Style="{StaticResource Stat}" TextTrimming="CharacterEllipsis"/>
+            </Border>
+            <Border Style="{StaticResource GridBox}">
+              <DataGrid x:Name="GridApp">
+                <DataGrid.Columns>
+                  <DataGridTemplateColumn Header="УРОВЕНЬ" Width="96" SortMemberPath="Order" CellTemplate="{StaticResource SevCell}"/>
+                  <DataGridTextColumn Header="ПАПКА" Binding="{Binding Name}" Width="210"/>
+                  <DataGridTextColumn Header="ГДЕ" Binding="{Binding Root}" Width="90"/>
+                  <DataGridTextColumn Header="ЧЬЯ" Binding="{Binding Owner}" Width="230"/>
+                  <DataGridTextColumn Header="РАЗМЕР" Binding="{Binding Size}" Width="90" SortMemberPath="Bytes">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
+                  <DataGridTextColumn Header="ПРОГРАММ" Binding="{Binding Exe}" Width="90">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
+                  <DataGridTextColumn Header="ОТМЕТКИ" Binding="{Binding Marks}" Width="*">
+                    <DataGridTextColumn.ElementStyle>
+                      <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource TextDim}"/></Style>
+                    </DataGridTextColumn.ElementStyle>
+                  </DataGridTextColumn>
+                </DataGrid.Columns>
+              </DataGrid>
+            </Border>
           </DockPanel>
         </TabItem>
       </TabControl>
