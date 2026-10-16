@@ -23,6 +23,7 @@
 param([switch]$AutoNeutralize)
 
 . (Join-Path $PSScriptRoot 'lib\Core.ps1')
+. (Join-Path $PSScriptRoot 'lib\Protect.ps1')
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 
 if (-not (Test-CgAdmin)) {
@@ -46,28 +47,11 @@ if ($tempish) {
     exit 2
 }
 
-$guardPs    = Join-Path $PSScriptRoot 'Guard-Service.ps1'
-$watchdogPs = Join-Path $PSScriptRoot 'Watchdog.ps1'
-$psExe      = Join-Path $env:windir 'System32\WindowsPowerShell\v1.0\powershell.exe'
-
-$guardArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$guardPs`""
-if ($AutoNeutralize) { $guardArgs += ' -AutoNeutralize' }
-
-$taskGuard = 'CookieGuard Watcher'
-$taskDog   = 'CookieGuard Watchdog'
+$null = Set-CgSetting 'AutoNeutralize' ([bool]$AutoNeutralize)
 
 # --- 1. основной сторож: при старте системы, от SYSTEM, с перезапуском ---
 try {
-    # WorkingDirectory не задаём намеренно: планировщик от SYSTEM отвергает
-    # некоторые пользовательские пути с ошибкой 0x8007010B («неверное имя
-    # каталога»), а скрипту он и не нужен — внутри всё через $PSScriptRoot.
-    $action  = New-ScheduledTaskAction -Execute $psExe -Argument $guardArgs
-    $trigger = New-ScheduledTaskTrigger -AtStartup
-    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-                  -StartWhenAvailable -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
-                  -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
-    Register-ScheduledTask -TaskName $taskGuard -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+    Register-CgGuardTask -AutoNeutralize:$AutoNeutralize
     Write-CgItem 'OK' 'Сторож будет запускаться при старте Windows (от SYSTEM) и перезапускаться, если его завершат'
 } catch {
     Write-CgItem 'CRIT' 'Не удалось создать задачу сторожа' $_.Exception.Message
@@ -76,19 +60,18 @@ try {
 
 # --- 2. наблюдатель: раз в минуту поднимает сторожа, если сердцебиение пропало ---
 try {
-    $dogArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watchdogPs`""
-    $action2  = New-ScheduledTaskAction -Execute $psExe -Argument $dogArgs
-    $trigger2 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration ([TimeSpan]::MaxValue)
-    $principal2 = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-    $settings2 = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
-    Register-ScheduledTask -TaskName $taskDog -Action $action2 -Trigger $trigger2 -Principal $principal2 -Settings $settings2 -Force | Out-Null
+    Register-CgWatchdogTask
     Write-CgItem 'OK' 'Наблюдатель будет раз в минуту проверять, жив ли сторож, и поднимать его'
 } catch {
-    Write-CgItem 'WARN' 'Не удалось создать наблюдателя (сторож всё равно работает)' $_.Exception.Message
+    # Раньше эта ошибка была предупреждением, и наблюдателя не было
+    # ни разу. Без него убитый сторож не поднимется до перезагрузки.
+    Write-CgItem 'CRIT' 'Не удалось создать наблюдателя' $_.Exception.Message
+    exit 1
 }
 
-# --- 3. запускаем сторожа прямо сейчас ---
-try { Start-ScheduledTask -TaskName $taskGuard; Write-CgItem 'OK' 'Сторож запущен' } catch { }
+# --- 3. запускаем (или перезапускаем) сторожа прямо сейчас ---
+if (Restart-CgGuard) { Write-CgItem 'OK' 'Сторож запущен' }
+else { Write-CgItem 'WARN' 'Сторож поставлен, но сразу не запустился — запустится наблюдателем в течение минуты' }
 
 Write-Host ''
 Write-Host '  Готово. Сторож работает в фоне и переживёт перезагрузку.' -ForegroundColor Green

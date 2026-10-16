@@ -25,6 +25,8 @@ function New-CgFinding {
     }
 }
 
+if (-not (Get-Command ConvertFrom-CgHostsText -ErrorAction SilentlyContinue)) { . (Join-Path $PSScriptRoot 'Hosts.ps1') }
+
 # ------------------------------------------------------------
 # 1. Защита Windows
 # ------------------------------------------------------------
@@ -202,21 +204,42 @@ function Get-CgTrafficFindings {
         $f += New-CgFinding 'OK' 'Прокси' 'Системный прокси WinHTTP не задан'
     }
 
-    $hostsPath = "$env:windir\System32\drivers\etc\hosts"
-    $badHosts = @()
-    if (Test-Path -LiteralPath $hostsPath) {
-        foreach ($l in (Get-Content -LiteralPath $hostsPath -ErrorAction SilentlyContinue)) {
-            $t = $l.Trim()
-            if (-not $t -or $t.StartsWith('#')) { continue }
-            if ($t -match '^\s*(127\.0\.0\.1|::1|0\.0\.0\.0)\s') { continue }
-            if ($t -match 'docker\.internal|kubernetes\.docker') { continue }
-            $badHosts += $t
-        }
+    # hosts: не «перенаправлений столько-то», а что именно и чьё.
+    # Обход блокировки Telegram на собственный адрес Telegram и
+    # подмена адреса банка — это разные вещи, и звучать одинаково
+    # они не должны.
+    $hostsPath = Get-CgHostsPath
+    $ents = @()
+    if (Test-Path -LiteralPath $hostsPath) { $ents = @(ConvertFrom-CgHostsText (Read-CgHostsText)) }
+    $redir = @($ents | Where-Object { $_.Kind -eq 'redirect' })
+    $blockProt = @($ents | Where-Object { $_.Kind -eq 'block' -and $_.Host -match $script:CgHostsProtection })
+    $byVerdict = @{ 'CRIT' = @(); 'WARN' = @(); 'NOTE' = @() }
+    foreach ($e in $redir) { $v = Get-CgHostsEntryVerdict $e; $byVerdict[$v.Severity] += $e }
+    $snap = Get-CgHostsSnapshot
+    $snapNote = $(if ($null -ne $snap) { "`n`nКопия hosts запомнена: любое изменение покажет монитор — что добавили, что убрали и кто." } else { "`n`nВключите автозащиту — тогда любое изменение hosts будет видно сразу, вместе с тем, кто его сделал." })
+
+    if ($byVerdict['CRIT'].Count) {
+        $f += New-CgFinding 'CRIT' 'hosts' ('hosts направляет важные сайты на заданные вручную адреса: {0}' -f $byVerdict['CRIT'].Count) (
+            (($byVerdict['CRIT'] | Select-Object -First 25 | ForEach-Object { Format-CgHostsEntry $_ }) -join "`n") +
+            "`n`nВход в аккаунты, банк или почта, открытые по чужому адресу, — подмена сайта. Если строки вписали не вы — удалите их." + $snapNote) $hostsPath
     }
-    if ($badHosts.Count) {
-        $f += New-CgFinding 'WARN' 'hosts' ('В файле hosts есть перенаправления: {0} шт.' -f $badHosts.Count) (($badHosts | Select-Object -First 25) -join "`n") $hostsPath
-    } else {
-        $f += New-CgFinding 'OK' 'hosts' 'Файл hosts без посторонних перенаправлений' '' $hostsPath
+    if ($byVerdict['WARN'].Count) {
+        $f += New-CgFinding 'WARN' 'hosts' ('В файле hosts есть перенаправления: {0} шт.' -f $byVerdict['WARN'].Count) (
+            (($byVerdict['WARN'] | Select-Object -First 25 | ForEach-Object { Format-CgHostsEntry $_ }) -join "`n") +
+            "`n`nТак делают и программы обхода блокировок, и вирусы. Проверьте, что адреса ваши: раздел, в котором стоит строка, подписала программа, которая её вписала." + $snapNote) $hostsPath
+    }
+    if ($byVerdict['NOTE'].Count) {
+        $f += New-CgFinding 'NOTE' 'hosts' ('Перенаправления в hosts на собственные адреса сервисов: {0}' -f $byVerdict['NOTE'].Count) (
+            (($byVerdict['NOTE'] | Select-Object -First 12 | ForEach-Object { Format-CgHostsEntry $_ }) -join "`n") +
+            "`n`nНапример, адрес из сети самого Telegram — так обходят блокировку; трафик при этом идёт к Telegram, а не к посреднику.") $hostsPath
+    }
+    if ($blockProt.Count) {
+        $f += New-CgFinding 'WARN' 'hosts' ('hosts блокирует сайты защиты и обновлений: {0}' -f $blockProt.Count) (
+            (($blockProt | Select-Object -First 25 | ForEach-Object { Format-CgHostsEntry $_ }) -join "`n") +
+            "`n`nТак вирус ослепляет антивирус: тот перестаёт обновляться и сверяться с облаком. Так же поступают «активаторы» платных программ. Если блокировку ставили не вы — удалите строки.") $hostsPath
+    }
+    if (-not $redir.Count -and -not $blockProt.Count) {
+        $f += New-CgFinding 'OK' 'hosts' 'Файл hosts без посторонних перенаправлений' ("Записей: $($ents.Count)." + $snapNote) $hostsPath
     }
 
     $f += Get-CgCertFindings
@@ -1661,8 +1684,9 @@ function Get-CgAdobeFindings {
 #  История запуска программ — чтобы опознать мелькнувшее окно
 # ------------------------------------------------------------
 function Test-CgProcAuditEnabled {
-    $out = & auditpol /get /subcategory:'{0CCE922B-69AE-11D9-BED3-505054503030}' 2>&1 | Out-String
-    return ($out -match 'Success' -or $out -match 'Успех')
+    # Тот же разбор, что у аудита cookie: по столбцу CSV, а не по
+    # поиску слова в выводе на языке системы.
+    return [bool](Get-CgAuditPolState '{0CCE922B-69AE-11D9-BED3-505054503030}').Enabled
 }
 
 function Get-CgProcessStarts {

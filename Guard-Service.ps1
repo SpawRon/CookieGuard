@@ -1,8 +1,9 @@
 ﻿# ============================================================
 #  CookieGuard - Guard-Service.ps1
 #  Головной сторож. Работает без окна, запускается при старте
-#  Windows от SYSTEM, пишет тревоги в журнал и показывает
-#  всплывающие уведомления.
+#  Windows от SYSTEM, пишет тревоги в журнал (logs\cookieguard-*.log
+#  и летопись logs\events-*.jsonl, которую читает окно) и
+#  показывает всплывающие уведомления.
 #
 #  Отдельно следит за тем, что чаще всего и ломают первым делом:
 #  не выключили ли защиту Windows и наш аудит. Если выключили —
@@ -29,8 +30,24 @@ $root = $PSScriptRoot
 . (Join-Path $root 'lib\Monitor.ps1')
 . (Join-Path $root 'lib\Actions.ps1')
 . (Join-Path $root 'lib\VirusTotal.ps1')
+. (Join-Path $root 'lib\Hosts.ps1')
+. (Join-Path $root 'lib\Protect.ps1')
 
-Write-CgLog 'INFO' ("Сторож запущен (PID $PID, AutoNeutralize=$AutoNeutralize)")
+# Один сторож на компьютер. Наблюдатель может запустить его в обход
+# планировщика, и без этой проверки иногда работали двое: каждая
+# тревога приходила дважды, а копию hosts правили наперегонки.
+$script:GuardMutex = $null
+try {
+    $created = $false
+    $script:GuardMutex = New-Object System.Threading.Mutex($true, 'Global\CookieGuardGuard', [ref]$created)
+    if (-not $created) {
+        if (-not $script:GuardMutex.WaitOne(0)) { exit 0 }
+    }
+} catch { }
+
+$settings = Get-CgSettings
+if (-not $AutoNeutralize -and $settings.AutoNeutralize) { $AutoNeutralize = $true }
+Write-CgLog 'INFO' ("Сторож запущен (PID $PID, автозащита=$($settings.AutoProtect), AutoNeutralize=$AutoNeutralize, профилей: $(@(Get-CgUserProfiles).Count))")
 
 # ------------------------------------------------------------
 #  Всплывающие уведомления
@@ -56,32 +73,81 @@ function Show-CgToast {
 
 # ------------------------------------------------------------
 #  Контроль состояния защиты
+#
+#  Раз в минуту: всё ли, что включено автозащитой, на месте. Что
+#  выключили — включаем обратно и говорим об этом. Сторож работает
+#  от SYSTEM, ему для этого не нужно ни окно, ни согласие UAC.
 # ------------------------------------------------------------
 $script:LastDefenderOk = $true
 $script:LastAuditOk = $true
+$script:HealFailedAt = @{}
+$script:FirstWatch = $true
 
 function Watch-Defenses {
-    # аудит доступа к cookie
-    $auditNow = Test-CgAuditEnabled
-    if (-not $auditNow -and $script:LastAuditOk) {
-        Write-CgLog 'CRIT' 'Аудит доступа к файлам cookie был ВЫКЛЮЧЕН'
-        Show-CgToast 'CookieGuard' 'Аудит доступа к cookie выключили. Поднимаю обратно.' 'CRIT'
-        # поднимаем обратно — это и есть ответ на "вирус отключит защиту"
-        $ap = Join-Path $root 'Install-Audit.ps1'
-        if (Test-Path $ap) { & powershell -NoProfile -ExecutionPolicy Bypass -File "$ap" 2>&1 | Out-Null }
+    $s = Get-CgSettings
+    if ($s.AutoProtect) {
+        foreach ($f in (Repair-CgProtection)) {
+            if ($f.Ok) {
+                # Первая проверка после запуска — это включение, а не
+                # «кто-то выключил»: так бывает после обновления, когда
+                # появилась новая часть. Тревога — только потом.
+                $alarm = ($f.Was -eq $false -and -not $script:FirstWatch)
+                $lvl = $(if ($alarm) { 'CRIT' } else { 'INFO' })
+                $msg = $(if ($alarm) { "Было выключено и включено обратно: $($f.Name)" } else { "Включено: $($f.Name)" })
+                Write-CgLog $lvl $msg
+                Write-CgEventRecord (New-CgEvent $(if ($lvl -eq 'CRIT') { 'WARN' } else { 'INFO' }) 'Защита' $msg 'Автозащита сама вернула эту часть. Если её выключали не вы — это повод разобраться: вредоносы первым делом гасят наблюдение.') 'guard'
+                if ($alarm) { Show-CgToast 'CookieGuard' $msg 'CRIT' }
+                $script:HealFailedAt.Remove($f.Key)
+            } else {
+                # Неудачу пишем раз в час, а не каждую минуту
+                $last = $script:HealFailedAt[$f.Key]
+                if (-not $last -or ((Get-Date) - $last).TotalMinutes -ge 60) {
+                    Write-CgLog 'WARN' "Не удалось включить: $($f.Name)"
+                    $script:HealFailedAt[$f.Key] = Get-Date
+                }
+            }
+        }
+    } else {
+        # Автозащита не включалась — прежнее поведение: только аудит cookie
+        # $null — не удалось спросить auditpol; это не «выключили»
+        $auditNow = Test-CgFsAuditOn
+        if ($null -ne $auditNow) {
+            if (-not $auditNow -and $script:LastAuditOk) {
+                Write-CgLog 'CRIT' 'Аудит доступа к файлам cookie был ВЫКЛЮЧЕН'
+                Show-CgToast 'CookieGuard' 'Аудит доступа к cookie выключили. Поднимаю обратно.' 'CRIT'
+                $null = Enable-CgFsAudit
+            }
+            $script:LastAuditOk = $auditNow
+        }
     }
-    $script:LastAuditOk = $auditNow
 
-    # защита Windows
+    $script:FirstWatch = $false
+
+    # Защита Windows. Defender в запасе при работающем стороннем
+    # антивирусе (у вас — ESET) — штатное состояние, а не тревога.
+    # Раньше сторож кричал «защиту ВЫКЛЮЧИЛИ» при каждом старте.
     try {
         $st = Get-MpComputerStatus -ErrorAction Stop
-        $defOk = $st.RealTimeProtectionEnabled
+        $defOk = [bool]$st.RealTimeProtectionEnabled
+        if (-not $defOk) { $defOk = [bool](@(Get-CgOtherAntivirus | Where-Object { $_.Active }).Count) }
         if (-not $defOk -and $script:LastDefenderOk) {
-            Write-CgLog 'CRIT' 'Защита Windows в реальном времени была ВЫКЛЮЧЕНА'
-            Show-CgToast 'CookieGuard' 'Кто-то выключил защиту Windows в реальном времени. Разберитесь немедленно.' 'CRIT'
+            Write-CgLog 'CRIT' 'Защита в реальном времени ВЫКЛЮЧЕНА: Defender выключен и другого работающего антивируса нет'
+            Show-CgToast 'CookieGuard' 'Защиту в реальном времени выключили, и другого антивируса нет. Разберитесь немедленно.' 'CRIT'
         }
         $script:LastDefenderOk = $defOk
     } catch { }
+}
+
+# Обновление заменило код — работать дальше на старом нельзя: новая
+# защита появилась бы только после перезагрузки. Сторож выходит,
+# наблюдатель (или окно, поставившее обновление) поднимает его снова.
+function Get-CgCodeStamp {
+    $t = [datetime]::MinValue
+    foreach ($f in @(Get-Item -LiteralPath (Join-Path $root 'Guard-Service.ps1') -ErrorAction SilentlyContinue) +
+                   @(Get-ChildItem -LiteralPath (Join-Path $root 'lib') -Filter *.ps1 -File -ErrorAction SilentlyContinue)) {
+        if ($f.LastWriteTimeUtc -gt $t) { $t = $f.LastWriteTimeUtc }
+    }
+    return $t
 }
 
 # ------------------------------------------------------------
@@ -111,12 +177,21 @@ function Try-AutoNeutralize {
 # ------------------------------------------------------------
 #  Главный цикл
 # ------------------------------------------------------------
-$state = New-CgMonitorState
-$lastWatch = (Get-Date).AddMinutes(-1)
+$hbPath = Join-Path (Get-CgDir 'state') 'guard-heartbeat.txt'
+function Write-CgHeartbeat {
+    try { [IO.File]::WriteAllText($hbPath, (Get-Date).ToString('o'), [Text.UTF8Encoding]::new($false)) } catch { }
+}
+Write-CgHeartbeat
+
+$state = New-CgMonitorState -Persist
+$codeStamp = Get-CgCodeStamp
+$lastWatch = (Get-Date).AddMinutes(-5)
+$lastBeat = Get-Date
+$lastCode = Get-Date
 
 while ($true) {
     try {
-        foreach ($e in (Invoke-CgMonitorPoll $state)) {
+        foreach ($e in (Invoke-CgMonitorPoll $state -Source 'guard')) {
             if ($e.Severity -in @('CRIT', 'WARN')) {
                 Show-CgToast ('CookieGuard: ' + $e.Kind) $e.Title $e.Severity
             }
@@ -126,11 +201,24 @@ while ($true) {
         Write-CgLog 'WARN' ("Сбой в цикле сторожа: $($_.Exception.Message)")
     }
 
-    if (((Get-Date) - $lastWatch).TotalSeconds -ge 20) {
-        Watch-Defenses
+    # отметка "я жив" — по ней наблюдатель и окно понимают, что сторож работает
+    if (((Get-Date) - $lastBeat).TotalSeconds -ge 20) { Write-CgHeartbeat; $lastBeat = Get-Date }
+
+    if (((Get-Date) - $lastWatch).TotalSeconds -ge 60) {
+        try { Watch-Defenses } catch { Write-CgLog 'WARN' ("Сбой проверки защиты: $($_.Exception.Message)") }
         $lastWatch = Get-Date
-        # отметка "я жив" — по ней watchdog понимает, что сторож работает
-        try { [IO.File]::WriteAllText((Join-Path (Get-CgDir 'state') 'guard-heartbeat.txt'), (Get-Date).ToString('o'), [Text.UTF8Encoding]::new($false)) } catch { }
+        Write-CgHeartbeat; $lastBeat = Get-Date
+    }
+
+    if (((Get-Date) - $lastCode).TotalSeconds -ge 30) {
+        $lastCode = Get-Date
+        if ((Get-CgCodeStamp) -gt $codeStamp) {
+            Write-CgLog 'INFO' 'Код программы обновлён — сторож перезапускается на новой версии'
+            # Без отметки «жив» наблюдатель поднимет сторожа в течение минуты
+            Remove-Item -LiteralPath $hbPath -Force -ErrorAction SilentlyContinue
+            try { if ($script:GuardMutex) { $script:GuardMutex.ReleaseMutex() } } catch { }
+            exit 0
+        }
     }
 
     Start-Sleep -Milliseconds $IntervalMs

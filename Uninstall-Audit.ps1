@@ -43,11 +43,10 @@ $fsGuid = '{0CCE921D-69AE-11D9-BED3-505054503030}'
 & auditpol /set /subcategory:$fsGuid /success:disable 2>&1 | Out-Null
 Write-CgItem 'OK' 'Политика аудита файловой системы выключена'
 
-# журнал запуска программ, если он включался
-$pcGuid = '{0CCE922B-69AE-11D9-BED3-505054503030}'
-& auditpol /set /subcategory:$pcGuid /success:disable 2>&1 | Out-Null
-$k = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit'
-try { Remove-ItemProperty -Path $k -Name 'ProcessCreationIncludeCmdLine_Enabled' -ErrorAction SilentlyContinue } catch { }
-Write-CgItem 'OK' 'Журнал запуска программ выключен'
+# Журнал запуска программ здесь больше НЕ выключается. Это отдельная
+# настройка, и раньше снятие аудита cookie гасило её заодно — снаружи
+# это выглядело как «журнал запуска выключается сам». Его снимает
+# выключение автозащиты (Uninstall-Protect.ps1).
+
 Write-Host ''
 Write-Host '  Система возвращена в исходное состояние.' -ForegroundColor Green

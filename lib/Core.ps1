@@ -46,11 +46,134 @@ function Get-CgDir {
     return $d
 }
 
+# Дописать строку в файл так, чтобы её не потерять.
+#
+# В журнал пишут сразу двое: сторож от SYSTEM и окно. Add-Content
+# открывает файл на запись без общего доступа, и если второй писал
+# в ту же миллисекунду, строка молча пропадала в catch { }. Отсюда
+# «журнал то пишется, то нет». Теперь файл открывается только на
+# дозапись (AppendData — Windows сама ставит каждую запись в конец,
+# даже если пишут двое), с общим доступом, и при занятости — повтор.
+function Add-CgLine {
+    param([string]$Path, [string]$Line)
+    $bytes = [Text.Encoding]::UTF8.GetBytes($Line + "`r`n")
+    for ($i = 0; $i -lt 12; $i++) {
+        $fs = $null
+        try {
+            $fs = New-Object IO.FileStream($Path, [IO.FileMode]::Append,
+                [Security.AccessControl.FileSystemRights]::AppendData,
+                ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete), 4096, [IO.FileOptions]::None)
+            $fs.Write($bytes, 0, $bytes.Length)
+            $fs.Flush()
+            return $true
+        } catch {
+            Start-Sleep -Milliseconds (15 + 15 * $i)
+        } finally {
+            if ($fs) { $fs.Dispose() }
+        }
+    }
+    return $false
+}
+
 function Write-CgLog {
     param([string]$Level = 'INFO', [string]$Message)
     $line = '{0} [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
     $f = Join-Path (Get-CgDir 'logs') ('cookieguard-{0}.log' -f (Get-Date -Format 'yyyy-MM-dd'))
-    try { Add-Content -LiteralPath $f -Value $line -Encoding UTF8 } catch { }
+    $null = Add-CgLine $f $line
+}
+
+# ---------- настройки, которые помнятся ----------
+#
+# Всё, что человек включил один раз, должно оставаться включённым:
+# после перезапуска окна, перезагрузки и обновления. Поэтому выбор
+# хранится в state\settings.json, а не в памяти окна. Пишется через
+# временный файл и замену — оборванная запись не оставит полфайла.
+function Get-CgSettingsPath { Join-Path (Get-CgDir 'state') 'settings.json' }
+
+function Get-CgSettings {
+    $s = [ordered]@{ AutoProtect = $false; AutoNeutralize = $false; MonitorOn = $true }
+    $p = Get-CgSettingsPath
+    $have = $false
+    if (Test-Path -LiteralPath $p) {
+        try {
+            $j = [IO.File]::ReadAllText($p) | ConvertFrom-Json -ErrorAction Stop
+            foreach ($pr in $j.PSObject.Properties) { $s[$pr.Name] = $pr.Value }
+            $have = $true
+        } catch { }
+    }
+    if (-not $have) {
+        # Первый запуск новой версии там, где сторож уже стоял:
+        # человек защиту включал — значит, автозащита включена.
+        # Без прав задачу SYSTEM не видно, и ответ «нет» был бы
+        # неправдой — такой ответ не записываем.
+        if (Test-CgAdmin) {
+            try {
+                if (Get-ScheduledTask -TaskName 'CookieGuard Watcher' -ErrorAction Stop) { $s.AutoProtect = $true }
+            } catch { }
+            try { Save-CgSettings $s } catch { }
+        }
+    }
+    return [PSCustomObject]$s
+}
+
+function Save-CgSettings {
+    param($Settings)
+    $p = Get-CgSettingsPath
+    $tmp = "$p.tmp"
+    $json = ([PSCustomObject]$Settings) | ConvertTo-Json -Depth 4
+    [IO.File]::WriteAllText($tmp, $json, (New-Object Text.UTF8Encoding $false))
+    if (Test-Path -LiteralPath $p) { [IO.File]::Replace($tmp, $p, $null) }
+    else { [IO.File]::Move($tmp, $p) }
+}
+
+function Set-CgSetting {
+    param([string]$Name, $Value)
+    $s = [ordered]@{}
+    foreach ($pr in (Get-CgSettings).PSObject.Properties) { $s[$pr.Name] = $pr.Value }
+    $s[$Name] = $Value
+    try { Save-CgSettings $s; return $true } catch { return $false }
+}
+
+# ---------- чьи профили смотреть ----------
+#
+# Сторож работает от SYSTEM, и для него %LOCALAPPDATA% — это профиль
+# самой системы (C:\Windows\System32\config\systemprofile). Браузеров
+# там нет. Поэтому фоновый сторож годами «следил» за пустым списком
+# файлов cookie: тревоги о чтении cookie он не мог поднять в принципе.
+# Под SYSTEM перебираем настоящие профили людей из реестра.
+function Test-CgIsSystem {
+    try { return ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -eq 'S-1-5-18') } catch { return $false }
+}
+
+function Get-CgUserProfiles {
+    if (-not (Test-CgIsSystem)) {
+        $dl = ''
+        try { $dl = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders' -ErrorAction Stop).'{374DE290-123F-4565-9164-39C4925E467B}' } catch { }
+        if (-not $dl) { $dl = Join-Path $env:USERPROFILE 'Downloads' }
+        return @([PSCustomObject]@{
+            Sid = ''; Home = $env:USERPROFILE; Local = $env:LOCALAPPDATA; Roaming = $env:APPDATA
+            Temp = $env:TEMP; Downloads = $dl
+        })
+    }
+    $out = @()
+    foreach ($k in (Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList' -ErrorAction SilentlyContinue)) {
+        $sid = $k.PSChildName
+        if ($sid -notmatch '^S-1-5-21-') { continue }
+        # не $home: это встроенная переменная PowerShell, только для чтения
+        $dir = ''
+        try { $dir = [Environment]::ExpandEnvironmentVariables("$((Get-ItemProperty -LiteralPath $k.PSPath -ErrorAction Stop).ProfileImagePath)") } catch { }
+        if (-not $dir -or -not (Test-Path -LiteralPath $dir)) { continue }
+        # Папка «Загрузки» бывает перенесена (у вас — на диск E:).
+        # Узнать это можно только из куста вошедшего человека.
+        $dl = ''
+        try { $dl = (Get-ItemProperty "Registry::HKEY_USERS\$sid\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders" -ErrorAction Stop).'{374DE290-123F-4565-9164-39C4925E467B}' } catch { }
+        if (-not $dl) { $dl = Join-Path $dir 'Downloads' }
+        $out += [PSCustomObject]@{
+            Sid = $sid; Home = $dir; Local = (Join-Path $dir 'AppData\Local'); Roaming = (Join-Path $dir 'AppData\Roaming')
+            Temp = (Join-Path $dir 'AppData\Local\Temp'); Downloads = $dl
+        }
+    }
+    return $out
 }
 
 function Write-CgHead {
@@ -84,32 +207,35 @@ function Write-CgItem {
 # ---------- браузеры и защищаемые файлы ----------
 
 function Get-CgBrowsers {
-    $defs = @(
-        @{ Name = 'Chrome'; Root = "$env:LOCALAPPDATA\Google\Chrome\User Data"
-           Exe  = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
-                    "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
-                    "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe") },
-        @{ Name = 'Edge'; Root = "$env:LOCALAPPDATA\Microsoft\Edge\User Data"
-           Exe  = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
-                    "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") },
-        @{ Name = 'Brave'; Root = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data"
-           Exe  = @("$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe",
-                    "${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser\Application\brave.exe",
-                    "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe") },
-        @{ Name = 'Yandex'; Root = "$env:LOCALAPPDATA\Yandex\YandexBrowser\User Data"
-           Exe  = @("$env:LOCALAPPDATA\Yandex\YandexBrowser\Application\browser.exe") },
-        @{ Name = 'Opera'; Root = "$env:APPDATA\Opera Software\Opera Stable"
-           Exe  = @("$env:LOCALAPPDATA\Programs\Opera\opera.exe") },
-        @{ Name = 'Vivaldi'; Root = "$env:LOCALAPPDATA\Vivaldi\User Data"
-           Exe  = @("$env:LOCALAPPDATA\Vivaldi\Application\vivaldi.exe") },
-        @{ Name = 'Firefox'; Root = "$env:APPDATA\Mozilla\Firefox\Profiles"
-           Exe  = @("$env:ProgramFiles\Mozilla Firefox\firefox.exe",
-                    "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe") }
-    )
     $out = @()
-    foreach ($d in $defs) {
-        if (Test-Path -LiteralPath $d.Root) {
-            $out += [PSCustomObject]@{ Name = $d.Name; Root = $d.Root; Exe = @($d.Exe) }
+    foreach ($u in (Get-CgUserProfiles)) {
+        $L = $u.Local; $R = $u.Roaming
+        $defs = @(
+            @{ Name = 'Chrome'; Root = "$L\Google\Chrome\User Data"
+               Exe  = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+                        "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+                        "$L\Google\Chrome\Application\chrome.exe") },
+            @{ Name = 'Edge'; Root = "$L\Microsoft\Edge\User Data"
+               Exe  = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
+                        "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") },
+            @{ Name = 'Brave'; Root = "$L\BraveSoftware\Brave-Browser\User Data"
+               Exe  = @("$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe",
+                        "${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser\Application\brave.exe",
+                        "$L\BraveSoftware\Brave-Browser\Application\brave.exe") },
+            @{ Name = 'Yandex'; Root = "$L\Yandex\YandexBrowser\User Data"
+               Exe  = @("$L\Yandex\YandexBrowser\Application\browser.exe") },
+            @{ Name = 'Opera'; Root = "$R\Opera Software\Opera Stable"
+               Exe  = @("$L\Programs\Opera\opera.exe") },
+            @{ Name = 'Vivaldi'; Root = "$L\Vivaldi\User Data"
+               Exe  = @("$L\Vivaldi\Application\vivaldi.exe") },
+            @{ Name = 'Firefox'; Root = "$R\Mozilla\Firefox\Profiles"
+               Exe  = @("$env:ProgramFiles\Mozilla Firefox\firefox.exe",
+                        "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe") }
+        )
+        foreach ($d in $defs) {
+            if (Test-Path -LiteralPath $d.Root) {
+                $out += [PSCustomObject]@{ Name = $d.Name; Root = $d.Root; Exe = @($d.Exe); Home = $u.Home }
+            }
         }
     }
     return $out

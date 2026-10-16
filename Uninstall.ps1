@@ -24,6 +24,10 @@ if (-not (Test-CgAdmin)) {
 Write-CgHead 'Удаление CookieGuard'
 
 # ---- 1. снять постоянную защиту ----
+# Сначала автозащита: иначе сторож включил бы обратно то, что
+# снимается дальше. Она же снимает аудит hosts и журнал запусков.
+$up = Join-Path $here 'Uninstall-Protect.ps1'
+if (Test-Path -LiteralPath $up) { & $up | Out-Null }
 $ug = Join-Path $here 'Uninstall-Guard.ps1'
 if (Test-Path -LiteralPath $ug) { & $ug | Out-Null }
 Write-CgItem 'OK' 'Постоянная защита снята'

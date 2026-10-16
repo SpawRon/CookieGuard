@@ -1831,4 +1831,66 @@ PlayerDebugMode станет 0.	PlayerDebugMode will be set to 0.
 Чтобы браузер их подхватил, нажмите «Перечитать списки» в настройках расширения (значок CookieGuard → Настройки) или перезапустите браузер.	For the browser to pick them up, press "Reload lists" in the extension settings (CookieGuard icon → Settings) or restart the browser.
 Списки не обновлены	Lists not updated
 Не удалось.	Failed.
+# ---- Автозащита, hosts, сеть, летопись ----
+ГЛАВНОЕ	MAIN
+Автозащита	Auto-protection
+Всё наблюдение одним переключателем. Помнит, что включено, стартует вместе с Windows и само включает обратно то, что выключили.	All monitoring with one switch. Remembers what is on, starts with Windows and turns back on whatever gets switched off.
+Что включено ▾	What's included ▾
+Свернуть ▴	Collapse ▴
+НАБЛЮДЕНИЕ ПО ОТДЕЛЬНОСТИ	INDIVIDUAL CONTROLS
+работает	working
+выключено	off
+не узнать без прав	needs admin rights to check
+Сторож стартует вместе с Windows	The guard starts with Windows
+Работает от SYSTEM без окна. Следит, даже когда CookieGuard закрыт и никто не вошёл.	Runs as SYSTEM with no window. Watches even when CookieGuard is closed and nobody is signed in.
+Сторож работает прямо сейчас	The guard is running right now
+Отметка «жив» обновляется каждые 20 секунд.	The “alive” mark is refreshed every 20 seconds.
+Наблюдатель поднимает сторожа, если его убили	The watchdog restarts the guard if it is killed
+Раз в минуту проверяет отметку «жив» и запускает сторожа заново.	Checks the “alive” mark once a minute and starts the guard again.
+Аудит доступа к файлам	File access auditing
+Без него Windows не записывает, какая программа открыла базу cookie.	Without it Windows doesn't record which program opened the cookie database.
+Под аудитом все базы cookie и паролей	Every cookie and password database is audited
+Всех профилей всех браузеров. Пересозданный браузером файл и новый профиль берутся под наблюдение сами.	Every profile of every browser. A file recreated by the browser and a new profile are picked up automatically.
+Журнал запуска программ с командной строкой	Program launch log with command lines
+Событие 4688: что запустилось, с какими аргументами и кто его вызвал.	Event 4688: what started, with which arguments, and who launched it.
+Слежение за hosts: что поменяли и кто	hosts watch: what changed and who did it
+Копия файла помнится между запусками, каждое изменение разбирается построчно, автор берётся из журнала безопасности.	A copy of the file is kept between runs, every change is broken down line by line, and the author comes from the Security log.
+Теневой путь: куда соединяется тот, кто трогал cookie	Shadow path: where whoever touched cookies connects to
+Программа, прочитавшая cookie, и подозрительный процесс 10 минут под наблюдением в сети. Отдельно — любые соединения посторонних программ с Telegram, Discord и файлообменниками, куда воры паролей сливают добычу.	A program that read cookies, or a suspicious process, is watched on the network for 10 minutes. Separately: any connection by a foreign program to Telegram, Discord or file-sharing sites, where password stealers dump their loot.
+Журнал безопасности не меньше 256 МБ	Security log of at least 256 MB
+Чтобы события о чтении cookie не затирались раньше, чем их прочтут.	So that cookie-access events aren't overwritten before they are read.
+Журнал событий на диске	Event journal on disk
+Каждая тревога пишется в logs\events-ГГГГ-ММ.jsonl и видна в мониторе после перезапуска, перезагрузки и обновления.	Every alert is written to logs\events-YYYY-MM.jsonl and stays visible in the monitor after a restart, a reboot or an update.
+Включена, но не работает частей: {0}. Сторож вернёт их в течение минуты; если не вернул — откройте список.	On, but parts not working: {0}. The guard will bring them back within a minute; if it doesn't, open the list.
+Включена. Помнит это после перезагрузки и обновления и сама включает обратно то, что выключили.	On. Remembers this across reboots and updates and turns back on whatever gets switched off.
+Сторож проверяет каждую часть раз в минуту. Тревоги видны в мониторе и после перезапуска — они хранятся на диске.	The guard checks every part once a minute. Alerts stay in the monitor after a restart — they are stored on disk.
+Выключена. Включите — и всё наблюдение заработает разом и будет включаться само.	Off. Turn it on and all monitoring starts at once and keeps itself on.
+Всё это включится одним переключателем справа.	All of this is turned on by the switch on the right.
+Часть состояния видна только с правами администратора.	Some states are visible only with administrator rights.
+Включён ✓	On ✓
+Управляется автозащитой. Чтобы выключить отдельно, выключите автозащиту.	Managed by auto-protection. To turn it off separately, turn off auto-protection.
+монитор: от сторожа	monitor: from guard
+Журнал пока пуст.	The log is empty so far.
+Включить автозащиту?	Turn on auto-protection?
+Включится всё сразу: аудит баз cookie и паролей всех профилей, журнал запуска программ, слежение за hosts, наблюдение за сетью после чтения cookie, сторож от SYSTEM при старте Windows и наблюдатель за ним. Выбор запомнится; что выключат — сторож включит обратно.	Everything is turned on at once: auditing of cookie and password databases in all profiles, the program launch log, the hosts watch, network watching after a cookie read, the SYSTEM guard at Windows startup and its watchdog. The choice is remembered; whatever gets switched off, the guard turns back on.
+Выключить автозащиту?	Turn off auto-protection?
+Сторож, аудит cookie, журнал запуска программ и слежение за hosts будут сняты. Журналы, улики и доверенные останутся.	The guard, cookie auditing, the program launch log and the hosts watch will be removed. Logs, evidence and trusted items stay.
+Выключить	Turn off
+Включаю автозащиту...	Turning on auto-protection...
+Выключаю автозащиту...	Turning off auto-protection...
+Включение автозащиты	Turning on auto-protection
+Выключение автозащиты	Turning off auto-protection
+Монитор запущен. Аудит выключен — обращения к cookie видны не будут, включите автозащиту в разделе «Защита».	Monitor started. Auditing is off — cookie access won't be visible; turn on auto-protection on the “Protection” page.
+Монитор запущен — наблюдаю за обращениями к cookie, запуском программ, hosts и сетью.	Monitor started — watching cookie access, program launches, hosts and the network.
+Окно сейчас перезапустится на новой версии.	The window will now restart on the new version.
+Сторож уже перезапущен на новой версии.	The guard has already been restarted on the new version.
+Сторож перейдёт на новую версию сам в течение минуты.	The guard will switch to the new version on its own within a minute.
+Файл hosts изменён: +{0} / −{1}	hosts file changed: +{0} / −{1}
+Файл hosts взят под наблюдение: записей {0}, перенаправлений {1}	hosts file is now watched: {0} entries, {1} redirects
+Копия запомнена. Любое следующее изменение — что добавили, что убрали и кто — появится здесь.	A copy is stored. Any later change — what was added, what was removed and by whom — will show up here.
+ТЕНЕВОЙ ПУТЬ: {0} после чтения cookie соединился с {1}	SHADOW PATH: {0} connected to {1} after reading cookies
+{0} соединяется с {1}	{0} is connecting to {1}
+hosts направляет важные сайты на заданные вручную адреса: {0}	hosts sends important sites to hand-set addresses: {0}
+Перенаправления в hosts на собственные адреса сервисов: {0}	hosts redirects to the services' own addresses: {0}
+hosts блокирует сайты защиты и обновлений: {0}	hosts blocks security and update sites: {0}
 '@

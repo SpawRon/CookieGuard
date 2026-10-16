@@ -12,7 +12,9 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 
 . (Join-Path $PSScriptRoot 'lib\Core.ps1')
 . (Join-Path $PSScriptRoot 'lib\Checks.ps1')
+. (Join-Path $PSScriptRoot 'lib\Hosts.ps1')
 . (Join-Path $PSScriptRoot 'lib\Monitor.ps1')
+. (Join-Path $PSScriptRoot 'lib\Protect.ps1')
 . (Join-Path $PSScriptRoot 'lib\VirusTotal.ps1')
 . (Join-Path $PSScriptRoot 'lib\Baseline.ps1')
 . (Join-Path $PSScriptRoot 'lib\Actions.ps1')
@@ -77,6 +79,7 @@ foreach ($n in @('ChipAdmin','ChipAudit','ChipMon','BtnScan','BtnMon','Cards','B
                  'CmbDns','BtnDnsOn','BtnDnsOff','BtnDnsTest','DnsStats',
                  'TitleBar','BtnMinW','BtnMaxW','BtnCloseW','Nav','BtnScanFiles','BtnScanFiles2',
                  'TglAudit','TglGuard','AuditSub',
+                 'TglAuto','AutoSub','BtnAutoMore','AutoPartsBox','AutoParts','AutoPartsHint',
                  'Inspector','InspKind','InspTitle','BtnInspClose','BtnDiag',
                  'UpdStats','UpdWhere','BtnUpdCheck','BtnUpdInstall','BtnUpdToken',
                  'BtnInspect','FixHead','FixPanel',
@@ -130,6 +133,7 @@ $app = @{
     LastJump   = $null
     IsAdmin    = (Test-CgAdmin)
     LastScan   = $null
+    MonMode    = ''
 }
 
 $ui.GridMon.ItemsSource = $app.MonItems
@@ -942,22 +946,58 @@ foreach ($g in @($ui.GridMon, $ui.GridFind, $ui.GridProc, $ui.GridExt, $ui.GridA
 # ------------------------------------------------------------
 #  Монитор
 # ------------------------------------------------------------
+# Монитор окна работает в одном из двух режимов.
+#
+# Сторож жив — окно не опрашивает систему само, а читает летопись
+# сторожа (logs\events-*.jsonl) вживую. Один источник правды: нет
+# двойных тревог, и то, что сторож увидел, пока окно было закрыто,
+# уже лежит в списке.
+#
+# Сторожа нет — окно опрашивает само и само ведёт летопись.
 $monScript = {
     param($sync)
     try {
         . (Join-Path $sync.Root 'lib\Core.ps1')
         . (Join-Path $sync.Root 'lib\Checks.ps1')
         . (Join-Path $sync.Root 'lib\Trust.ps1')
+        . (Join-Path $sync.Root 'lib\Hosts.ps1')
         . (Join-Path $sync.Root 'lib\Monitor.ps1')
-        $state = New-CgMonitorState
-        $sync.Counters = $state.Counters
+        . (Join-Path $sync.Root 'lib\Protect.ps1')
+        $state = $null
+        $tail = $null
+        $cnt = [PSCustomObject]@{ Crit = 0; Warn = 0; Note = 0; Ok = 0; Events = 0 }
+        $lastCheck = [datetime]::MinValue
+        $guard = $false
         while (-not $sync.Stop) {
+            if (((Get-Date) - $lastCheck).TotalSeconds -ge 10) { $guard = Test-CgGuardAlive; $lastCheck = Get-Date }
             try {
-                foreach ($e in (Invoke-CgMonitorPoll $state)) { $sync.Queue.Enqueue($e) }
+                if ($guard) {
+                    $sync.Mode = 'guard'
+                    $state = $null
+                    if (-not $tail) { $tail = New-CgEventTail }
+                    foreach ($e in (Read-CgEventTail $tail)) {
+                        $cnt.Events++
+                        switch ($e.Severity) { 'CRIT' { $cnt.Crit++ } 'WARN' { $cnt.Warn++ } 'NOTE' { $cnt.Note++ } default { $cnt.Ok++ } }
+                        $sync.Queue.Enqueue($e)
+                    }
+                    $sync.Counters = $cnt
+                    Start-Sleep -Milliseconds 1000
+                } else {
+                    $sync.Mode = 'self'
+                    $tail = $null
+                    if (-not $state) { $state = New-CgMonitorState -Persist }
+                    foreach ($e in (Invoke-CgMonitorPoll $state -Source 'window')) {
+                        $cnt.Events++
+                        switch ($e.Severity) { 'CRIT' { $cnt.Crit++ } 'WARN' { $cnt.Warn++ } 'NOTE' { $cnt.Note++ } default { $cnt.Ok++ } }
+                        $sync.Queue.Enqueue($e)
+                    }
+                    $sync.Counters = $cnt
+                    Start-Sleep -Milliseconds 1500
+                }
             } catch {
                 $sync.Error = $_.ToString()
+                Start-Sleep -Milliseconds 1500
             }
-            Start-Sleep -Milliseconds 1500
         }
     } catch {
         $sync.Error = $_.ToString()
@@ -966,11 +1006,24 @@ $monScript = {
     }
 }
 
+function Set-CgMonChip {
+    if (-not $sync.Running) {
+        $ui.ChipMon.Text = (T 'монитор: остановлен'); $ui.ChipMon.Foreground = '#7C8694'
+    } elseif ($sync.Mode -eq 'guard') {
+        $ui.ChipMon.Text = (T 'монитор: от сторожа'); $ui.ChipMon.Foreground = '#4ADE80'
+    } else {
+        $ui.ChipMon.Text = (T 'монитор: работает'); $ui.ChipMon.Foreground = '#4ADE80'
+    }
+}
+
 function Start-Monitor {
+    param([switch]$Remember)
+    if ($Remember) { $null = Set-CgSetting 'MonitorOn' $true }
     if ($sync.Running) { return }
     $sync.Stop = $false
     $sync.Error = $null
     $sync.Running = $true
+    $sync.Mode = ''
 
     $rs = [runspacefactory]::CreateRunspace()
     $rs.ApartmentState = 'MTA'
@@ -984,17 +1037,20 @@ function Start-Monitor {
 
     $ui.BtnMon.Content  = (T 'Остановить монитор')
     $ui.BtnMon2.Content = (T 'Остановить монитор')
-    $ui.ChipMon.Text = (T 'монитор: работает')
-    $ui.ChipMon.Foreground = '#4ADE80'
+    Set-CgMonChip
     if (-not (Test-CgAuditEnabled)) {
-        Set-Status 'Монитор запущен. Аудит выключен — обращения к cookie видны не будут, включите его в разделе «Защита».'
+        Set-Status 'Монитор запущен. Аудит выключен — обращения к cookie видны не будут, включите автозащиту в разделе «Защита».'
     } else {
-        Set-Status 'Монитор запущен — наблюдаю за обращениями к cookie и запуском программ.'
+        Set-Status 'Монитор запущен — наблюдаю за обращениями к cookie, запуском программ, hosts и сетью.'
     }
     Write-CgLog 'INFO' 'Монитор запущен из окна'
 }
 
+# -Remember: остановил человек — значит, и при следующем запуске окна
+# монитор включать не надо. Закрытие окна выбор не меняет.
 function Stop-Monitor {
+    param([switch]$Remember)
+    if ($Remember) { $null = Set-CgSetting 'MonitorOn' $false }
     if (-not $sync.Running -and -not $app.MonPs) { return }
     $sync.Stop = $true
     try { if ($app.MonPs) { $null = $app.MonPs.Stop(); $app.MonPs.Dispose() } } catch { }
@@ -1003,13 +1059,12 @@ function Stop-Monitor {
     $sync.Running = $false
     $ui.BtnMon.Content  = (T 'Запустить монитор')
     $ui.BtnMon2.Content = (T 'Запустить монитор')
-    $ui.ChipMon.Text = (T 'монитор: остановлен')
-    $ui.ChipMon.Foreground = '#7C8694'
+    Set-CgMonChip
     Set-Status 'Монитор остановлен.'
     Write-CgLog 'INFO' 'Монитор остановлен'
 }
 
-$toggleMon = { if ($sync.Running) { Stop-Monitor } else { Start-Monitor } }
+$toggleMon = { if ($sync.Running) { Stop-Monitor -Remember } else { Start-Monitor -Remember } }
 $ui.BtnMon.Add_Click($toggleMon)
 $ui.BtnMon2.Add_Click($toggleMon)
 $ui.BtnMonClear.Add_Click({ $app.MonItems.Clear(); Set-Status 'Список событий очищен' })
@@ -1306,13 +1361,24 @@ function Refresh-Exts     { Start-BgTask 'exts'  'Читаю расширени�
 function Refresh-Autoruns { Start-BgTask 'auto'  'Читаю автозапуск...' }
 function Refresh-Runs     { Start-BgTask 'runs'  'Читаю историю запуска программ...' }
 
+# Журнал за несколько дней, а не только за сегодня: после полуночи
+# страница была пустой, и казалось, что журнал не пишется вовсе.
 function Refresh-Log {
-    $f = Join-Path (Get-CgDir 'logs') ('cookieguard-{0}.log' -f (Get-Date -Format 'yyyy-MM-dd'))
-    if (Test-Path -LiteralPath $f) {
-        $ui.LogBox.Text = (Get-Content -LiteralPath $f -Encoding UTF8 -Tail 500) -join "`r`n"
+    $files = @(Get-ChildItem -LiteralPath (Get-CgDir 'logs') -Filter 'cookieguard-*.log' -File -ErrorAction SilentlyContinue |
+               Sort-Object Name -Descending | Select-Object -First 7)
+    $lines = New-Object System.Collections.ArrayList
+    foreach ($f in $files) {
+        $chunk = @()
+        try { $chunk = @((Read-CgSharedText $f.FullName) -split "`r?`n" | Where-Object { $_ }) } catch { }
+        $lines.InsertRange(0, [string[]]$chunk)
+        if ($lines.Count -ge 1500) { break }
+    }
+    if ($lines.Count) {
+        $from = [Math]::Max(0, $lines.Count - 1500)
+        $ui.LogBox.Text = ($lines.GetRange($from, $lines.Count - $from) -join "`r`n")
         $ui.LogBox.ScrollToEnd()
     } else {
-        $ui.LogBox.Text = (T 'Журнал за сегодня пуст.')
+        $ui.LogBox.Text = (T 'Журнал пока пуст.')
     }
 }
 
@@ -1666,6 +1732,7 @@ $timer.Add_Tick({
     }
     while ($app.MonItems.Count -gt 3000) { $app.MonItems.RemoveAt($app.MonItems.Count - 1) }
 
+    if ($sync.Running -and $sync.Mode -ne $app.MonMode) { $app.MonMode = $sync.Mode; Set-CgMonChip }
     if ($sync.Counters) {
         $ui.MonStats.Text = ((T "событий: {0}    критично: {1}    внимание: {2}") -f $sync.Counters.Events, $sync.Counters.Crit, $sync.Counters.Warn)
     }
@@ -1944,6 +2011,9 @@ $ui.Nav.Add_SelectionChanged({
     $i = $ui.Nav.SelectedIndex
     if ($script:CgNavToPage.ContainsKey($i)) {
         $ui.Tabs.SelectedIndex = $script:CgNavToPage[$i]
+        # Журнал и состояние автозащиты — свежие при каждом открытии
+        if ($script:CgNavToPage[$i] -eq $script:CgPageByKey['log']) { Refresh-Log }
+        if ($script:CgNavToPage[$i] -eq $script:CgPageByKey['guard'] -and $ui.AutoPartsBox.Visibility -eq 'Visible') { Update-CgAutoUi }
         Start-CgPageFade
     }
 })
@@ -2275,7 +2345,7 @@ $ui.BtnUpdInstall.Add_Click({
         $text  = 'Эта версия уже установлена. Файлы программы будут переписаны заново из репозитория — все правки, сделанные в установленной копии, пропадут.'
         $kind  = 'warn'; $yes = 'Переустановить'
     }
-    $text += ' Модули lib\*.ps1, которых нет в репозитории, будут удалены. Эталон, доверенные, карантин и журналы останутся на месте. После обновления программу нужно перезапустить.'
+    $text += ' Модули lib\*.ps1, которых нет в репозитории, будут удалены. Эталон, доверенные, карантин, журналы и настройки останутся на месте. Сторож и окно сами перезапустятся на новой версии.'
     if (-not (Confirm-CgDialog -Title $title -Text $text `
                 -Subject ("{0}  {1}`n{2}" -f $u.Short, $when, $u.Message) -Kind $kind -Yes $yes)) { return }
 
@@ -2289,16 +2359,29 @@ $ui.BtnUpdInstall.Add_Click({
         return
     }
 
-    $note = 'Перезапустите программу, чтобы изменения вступили в силу.'
+    # Фон переходит на новый код сразу: сторож перезапускается сейчас,
+    # а не после перезагрузки. Окно перезапускает само себя.
+    $guardNote = ''
+    if (Test-CgTask $script:CgTaskGuard) {
+        if (Restart-CgGuard) { $guardNote = ' Сторож уже перезапущен на новой версии.' }
+        else { $guardNote = ' Сторож перейдёт на новую версию сам в течение минуты.' }
+    }
+    $note = 'Окно сейчас перезапустится на новой версии.' + $guardNote
     if (@($res.Locked).Count) {
         # .exe занят, пока программа работает. Это не беда: он только
         # запускает .ps1, в котором и лежит вся логика.
         $note += ' Файлы, занятые работающей программой, останутся прежними: ' + (@($res.Locked) -join ', ') + '.'
     }
-    $null = Show-CgDialog -Title 'Обновление установлено' `
-        -Text $note -Subject ('версия {0}, заменено файлов: {1}' -f $u.Short, $res.Copied) -Kind 'ok'
+    $null = Show-CgDialog -Title 'Обновление установлено' -Text $note -Subject ('версия {0}, заменено файлов: {1}' -f $u.Short, $res.Copied) -Kind 'ok'
     Update-CgVersionText
-    Set-Status 'Обновление установлено — перезапустите программу'
+    Write-CgLog 'INFO' 'Окно перезапускается после обновления'
+    try {
+        Start-Process (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -ArgumentList @(
+            '-STA', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', ('"{0}"' -f $script:CgSelfPath))
+        $win.Close()
+    } catch {
+        Set-Status 'Обновление установлено — перезапустите программу'
+    }
 })
 
 $ui.BtnUpdToken.Add_Click({
@@ -2341,10 +2424,119 @@ function Sync-CgToggles {
 
         $t = Get-ScheduledTask -TaskName 'CookieGuard Watcher' -ErrorAction SilentlyContinue
         $ui.TglGuard.IsChecked = [bool]$t
+
+        # «Журнал запуска программ» был кнопкой «Включить» без состояния:
+        # включённый журнал выглядел выключенным, и его включали снова и
+        # снова. Теперь видно, включён ли он.
+        $pa = Test-CgProcAuditOn
+        if ($pa -eq $true) { $ui.BtnProcAudit2.Content = (T 'Включён ✓'); $ui.BtnProcAudit2.IsEnabled = $false }
+        else { $ui.BtnProcAudit2.Content = (T 'Включить'); $ui.BtnProcAudit2.IsEnabled = $true }
+
+        # Пока работает автозащита, отдельные переключатели — её части:
+        # выключить одну часть нельзя, сторож включил бы её через минуту.
+        $auto = [bool](Get-CgSettings).AutoProtect
+        $ui.TglAuto.IsChecked = $auto
+        foreach ($c in @($ui.TglAudit, $ui.TglGuard)) {
+            $c.IsEnabled = (-not $auto)
+            $c.ToolTip = $(if ($auto) { (T 'Управляется автозащитой. Чтобы выключить отдельно, выключите автозащиту.') } else { $null })
+        }
+        if ($auto) { $ui.BtnProcAudit2.IsEnabled = $false }
     } catch { } finally {
         $script:CgTogglesSyncing = $false
     }
 }
+
+# Список частей автозащиты с живым состоянием каждой
+function Update-CgAutoUi {
+    $st = @()
+    try { $st = @(Get-CgProtectStatus) } catch { }
+    $auto = [bool](Get-CgSettings).AutoProtect
+    $ui.AutoParts.Children.Clear()
+    $bad = 0; $unknown = 0
+    foreach ($p in $st) {
+        $g = New-Object System.Windows.Controls.Grid
+        $g.Margin = '0,0,0,10'
+        foreach ($w in @('Auto', '*', 'Auto')) {
+            $cd = New-Object System.Windows.Controls.ColumnDefinition
+            if ($w -eq '*') { $cd.Width = New-Object System.Windows.GridLength(1, ([System.Windows.GridUnitType]::Star)) }
+            else { $cd.Width = [System.Windows.GridLength]::Auto }
+            $g.ColumnDefinitions.Add($cd)
+        }
+        $dot = New-Object System.Windows.Shapes.Ellipse
+        $dot.Width = 8; $dot.Height = 8; $dot.Margin = '2,5,12,0'; $dot.VerticalAlignment = 'Top'
+        $state = ''; $color = '#7C8694'
+        if ($p.On -eq $true) { $state = (T 'работает'); $color = '#4ADE80' }
+        elseif ($p.On -eq $false) {
+            $state = (T 'выключено')
+            if ($auto) { $color = '#FF5E5E'; $bad++ }
+        } else { $state = (T 'не узнать без прав'); $unknown++ }
+        $dot.Fill = $color
+        [System.Windows.Controls.Grid]::SetColumn($dot, 0)
+        $sp = New-Object System.Windows.Controls.StackPanel
+        $n = New-Object System.Windows.Controls.TextBlock
+        $n.Text = (T $p.Name); $n.Foreground = '#ECEFF4'; $n.FontSize = 12.5; $n.TextWrapping = 'Wrap'
+        $d = New-Object System.Windows.Controls.TextBlock
+        $d.Text = (T $p.Why); $d.Foreground = '#7C8694'; $d.FontSize = 11.5; $d.TextWrapping = 'Wrap'; $d.Margin = '0,2,0,0'
+        $null = $sp.Children.Add($n); $null = $sp.Children.Add($d)
+        [System.Windows.Controls.Grid]::SetColumn($sp, 1)
+        $s2 = New-Object System.Windows.Controls.TextBlock
+        $s2.Text = $state; $s2.Foreground = $color; $s2.FontSize = 11.5; $s2.Margin = '14,1,0,0'
+        [System.Windows.Controls.Grid]::SetColumn($s2, 2)
+        $null = $g.Children.Add($dot); $null = $g.Children.Add($sp); $null = $g.Children.Add($s2)
+        $null = $ui.AutoParts.Children.Add($g)
+    }
+    if ($auto) {
+        if ($bad) {
+            $ui.AutoSub.Text = ((T 'Включена, но не работает частей: {0}. Сторож вернёт их в течение минуты; если не вернул — откройте список.') -f $bad)
+            $ui.AutoSub.Foreground = '#FFB340'
+        } else {
+            $ui.AutoSub.Text = (T 'Включена. Помнит это после перезагрузки и обновления и сама включает обратно то, что выключили.')
+            $ui.AutoSub.Foreground = '#7C8694'
+        }
+        $ui.AutoPartsHint.Text = (T 'Сторож проверяет каждую часть раз в минуту. Тревоги видны в мониторе и после перезапуска — они хранятся на диске.')
+    } else {
+        $ui.AutoSub.Text = (T 'Выключена. Включите — и всё наблюдение заработает разом и будет включаться само.')
+        $ui.AutoSub.Foreground = '#7C8694'
+        $ui.AutoPartsHint.Text = (T 'Всё это включится одним переключателем справа.')
+    }
+    if ($unknown -and -not $app.IsAdmin) { $ui.AutoPartsHint.Text += ' ' + (T 'Часть состояния видна только с правами администратора.') }
+}
+
+$ui.BtnAutoMore.Add_Click({
+    if ($ui.AutoPartsBox.Visibility -eq 'Visible') {
+        $ui.AutoPartsBox.Visibility = 'Collapsed'; $ui.BtnAutoMore.Content = (T 'Что включено ▾')
+    } else {
+        Update-CgAutoUi
+        $ui.AutoPartsBox.Visibility = 'Visible'; $ui.BtnAutoMore.Content = (T 'Свернуть ▴')
+    }
+})
+
+$ui.TglAuto.Add_Click({
+    if ($script:CgTogglesSyncing) { return }
+    if ($ui.TglAuto.IsChecked) {
+        $autoQ = [bool]$ui.ChkAutoNeutr.IsChecked
+        $txt = 'Включится всё сразу: аудит баз cookie и паролей всех профилей, журнал запуска программ, слежение за hosts, наблюдение за сетью после чтения cookie, сторож от SYSTEM при старте Windows и наблюдатель за ним. Выбор запомнится; что выключат — сторож включит обратно.'
+        if ($autoQ) { $txt += ' Авто-карантин включён — подтверждённое вредоносное изымается без вопросов.' }
+        if (-not (Confirm-CgDialog -Title 'Включить автозащиту?' -Text $txt -Kind 'question' -Yes 'Включить')) { Sync-CgToggles; return }
+        # Список раскрывается сразу: человек видит, что именно включилось
+        $ui.AutoPartsBox.Visibility = 'Visible'; $ui.BtnAutoMore.Content = (T 'Свернуть ▴')
+        Set-Busy $true 'Включаю автозащиту...'
+        $extra = @()
+        if ($autoQ) { $extra = @('-AutoNeutralize') }
+        $null = Invoke-AuditScript 'Install-Protect.ps1' 'Включение автозащиты' $extra
+        Set-Busy $false
+        if (-not $sync.Running) { Start-Monitor -Remember }
+    } else {
+        $okOff = Confirm-CgDialog -Title 'Выключить автозащиту?' -Text 'Сторож, аудит cookie, журнал запуска программ и слежение за hosts будут сняты. Журналы, улики и доверенные останутся.' -Kind 'warn' -Yes 'Выключить' -Dangerous
+        if (-not $okOff) { Sync-CgToggles; return }
+        Set-Busy $true 'Выключаю автозащиту...'
+        $null = Invoke-AuditScript 'Uninstall-Protect.ps1' 'Выключение автозащиты'
+        Set-Busy $false
+    }
+    Sync-CgToggles
+    Update-GuardStats
+    Update-CgAutoUi
+})
 
 $ui.TglAudit.Add_Click({
     if ($script:CgTogglesSyncing) { return }
@@ -2458,7 +2650,17 @@ function Invoke-CgLateInit {
     Update-DnsStats
     Update-CgAdStats
     Refresh-Log
-    $ui.ChipMon.Text = (T 'монитор: остановлен')
+    Update-CgAutoUi
+    # Прошлые события — из летописи на диске: список не начинается с
+    # пустоты после перезапуска, перезагрузки или обновления
+    try {
+        foreach ($e in @(Get-CgEventHistory 300)) {
+            if ($e.Severity -eq 'OK' -and -not $ui.ChkShowOk.IsChecked) { continue }
+            $null = $app.MonItems.Add($e)
+        }
+    } catch { }
+    # Монитор помнит, включали ли его: включать каждый раз руками не нужно
+    if ((Get-CgSettings).MonitorOn) { Start-Monitor } else { Set-CgMonChip }
     if (-not $app.IsAdmin) {
         Set-Status 'Запущено без прав администратора. Включение аудита запросит повышение прав отдельно.'
     } else {

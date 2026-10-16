@@ -458,7 +458,32 @@ $script:CgMainXaml = @'
                 <TextBlock Text="Что программа делает постоянно, без вашего участия." Style="{StaticResource Sub}" Margin="0,6,0,0"/>
               </StackPanel>
 
-              <TextBlock Text="НАБЛЮДЕНИЕ" Style="{StaticResource GroupLabel}"/>
+              <TextBlock Text="ГЛАВНОЕ" Style="{StaticResource GroupLabel}"/>
+
+              <!-- Один переключатель на всё. Под ним — список того, что он
+                   включает, с живым состоянием каждой части: так видно не
+                   «защита включена», а что именно работает и что нет. -->
+              <Border Style="{StaticResource CardRow}" Margin="0,0,0,26">
+                <StackPanel>
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Style="{StaticResource SettingIcon}"><TextBlock Text="&#xEA18;" Style="{StaticResource SettingIconGlyph}"/></Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                      <TextBlock Text="Автозащита" Style="{StaticResource SettingName}"/>
+                      <TextBlock x:Name="AutoSub" Text="Всё наблюдение одним переключателем. Помнит, что включено, стартует вместе с Windows и само включает обратно то, что выключили." Style="{StaticResource Sub}" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <Button x:Name="BtnAutoMore" Grid.Column="2" Content="Что включено ▾" Style="{StaticResource Ghost}" Margin="14,0,0,0"/>
+                    <CheckBox x:Name="TglAuto" Grid.Column="3" Style="{StaticResource Toggle}" Margin="14,0,0,0"/>
+                  </Grid>
+                  <StackPanel x:Name="AutoPartsBox" Visibility="Collapsed" Margin="0,16,0,0">
+                    <Border Height="1" Background="{StaticResource Line}" Margin="0,0,0,12"/>
+                    <StackPanel x:Name="AutoParts"/>
+                    <TextBlock x:Name="AutoPartsHint" Style="{StaticResource Sub}" Margin="0,10,0,0"/>
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
+              <TextBlock Text="НАБЛЮДЕНИЕ ПО ОТДЕЛЬНОСТИ" Style="{StaticResource GroupLabel}"/>
 
               <Border Style="{StaticResource CardRow}">
                 <Grid>
@@ -728,7 +753,7 @@ $script:CgMainXaml = @'
             <Border Style="{StaticResource GridBox}">
               <DataGrid x:Name="GridMon">
                 <DataGrid.Columns>
-                  <DataGridTextColumn Header="ВРЕМЯ"   Binding="{Binding TimeText}" Width="78">
+                  <DataGridTextColumn Header="ВРЕМЯ"   Binding="{Binding TimeText}" Width="104">
                     <DataGridTextColumn.ElementStyle>
                       <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource FontMono}"/><Setter Property="FontSize" Value="11.5"/><Setter Property="Foreground" Value="{StaticResource Muted}"/></Style>
                     </DataGridTextColumn.ElementStyle>

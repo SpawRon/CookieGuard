@@ -1,32 +1,35 @@
 ﻿# ============================================================
 #  CookieGuard - Watchdog.ps1
 #  Наблюдатель. Раз в минуту проверяет сердцебиение сторожа
-#  и, если оно пропало, запускает сторожа заново.
+#  и, если оно пропало, запускает сторожа заново. Если сняли саму
+#  задачу сторожа, а автозащита включена, — ставит её обратно.
 #  Намеренно простой и быстрый — отработал и вышел.
 # ============================================================
 
 $ErrorActionPreference = 'SilentlyContinue'
 . (Join-Path $PSScriptRoot 'lib\Core.ps1')
+. (Join-Path $PSScriptRoot 'lib\Protect.ps1')
 
-$hb = Join-Path (Get-CgDir 'state') 'guard-heartbeat.txt'
-$alive = $false
-if (Test-Path -LiteralPath $hb) {
+if (Test-CgGuardAlive) { return }
+
+$s = Get-CgSettings
+if (-not (Test-CgTask $script:CgTaskGuard)) {
+    if (-not $s.AutoProtect) { return }
     try {
-        $t = [datetime]::Parse((Get-Content -LiteralPath $hb -Raw))
-        if (((Get-Date) - $t).TotalSeconds -lt 90) { $alive = $true }
-    } catch { }
+        Register-CgGuardTask -AutoNeutralize:([bool]$s.AutoNeutralize)
+        Write-CgLog 'CRIT' 'Наблюдатель: задачу сторожа кто-то снял — поставил обратно'
+    } catch {
+        Write-CgLog 'WARN' "Наблюдатель: задачу сторожа вернуть не удалось: $($_.Exception.Message)"
+    }
 }
 
-if ($alive) { return }
-
-Write-CgLog 'WARN' 'Watchdog: сердцебиение сторожа пропало — поднимаю сторожа'
+Write-CgLog 'WARN' 'Наблюдатель: сердцебиение сторожа пропало — поднимаю сторожа'
 try {
-    Start-ScheduledTask -TaskName 'CookieGuard Watcher'
+    Start-ScheduledTask -TaskName $script:CgTaskGuard -ErrorAction Stop
 } catch {
-    # запасной путь, если задачу сняли: запускаем напрямую
+    # запасной путь, если задачу сняли и вернуть не вышло: запускаем напрямую
     $guardPs = Join-Path $PSScriptRoot 'Guard-Service.ps1'
-    $psExe = Join-Path $env:windir 'System32\WindowsPowerShell\v1.0\powershell.exe'
     if (Test-Path $guardPs) {
-        Start-Process $psExe -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', "`"$guardPs`"" -WindowStyle Hidden
+        Start-Process (Get-CgPsExe) -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', "`"$guardPs`"" -WindowStyle Hidden
     }
 }
