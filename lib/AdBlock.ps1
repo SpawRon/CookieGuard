@@ -22,14 +22,42 @@
 
 $ErrorActionPreference = 'SilentlyContinue'
 
-$script:CgAdBlockLists = @(
-    @{ Name = 'EasyList'; Url = 'https://easylist.to/easylist/easylist.txt' }
-    @{ Name = 'RuAdList'; Url = 'https://easylist-downloads.adblockplus.org/ruadlist.txt' }
+# Каталог списков. Default — что включено, пока человек сам не выбрал.
+# Свои адреса — в настройке AdListsCustom (только https).
+$script:CgAdBlockCatalog = @(
+    @{ Id = 'easylist';    Name = 'EasyList';            Default = $true;  Url = 'https://easylist.to/easylist/easylist.txt';               Note = 'основной мировой список рекламы' }
+    @{ Id = 'ruadlist';    Name = 'RuAdList';            Default = $true;  Url = 'https://easylist-downloads.adblockplus.org/ruadlist.txt'; Note = 'реклама на русскоязычных сайтах' }
+    @{ Id = 'easyprivacy'; Name = 'EasyPrivacy';         Default = $true;  Url = 'https://easylist.to/easylist/easyprivacy.txt';            Note = 'счётчики, трекеры и сборщики статистики' }
+    @{ Id = 'peterlowe';   Name = "Peter Lowe's list";   Default = $true;  Url = 'https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=0&mimetype=plaintext'; Note = 'короткий список рекламных и следящих серверов' }
+    @{ Id = 'adguard-ru';  Name = 'AdGuard Russian';     Default = $false; Url = 'https://filters.adtidy.org/extension/ublock/filters/1.txt'; Note = 'второй взгляд на рунет: ловит то, что пропускает RuAdList' }
+    @{ Id = 'adguard';     Name = 'AdGuard Base';        Default = $false; Url = 'https://filters.adtidy.org/extension/ublock/filters/2_without_easylist.txt'; Note = 'мировая реклама сверх EasyList' }
+    @{ Id = 'annoyance';   Name = "Fanboy's Annoyance";  Default = $false; Url = 'https://secure.fanboy.co.nz/fanboy-annoyance.txt';        Note = 'всплывающие окна, баннеры cookie, виджеты соцсетей' }
+    @{ Id = 'antiadblock'; Name = 'Anti-Adblock Killer'; Default = $false; Url = 'https://easylist-downloads.adblockplus.org/antiadblockfilters.txt'; Note = 'сайты, которые требуют выключить блокировщик' }
 )
 
-# Сколько правил отдавать браузеру. Chrome гарантирует каждому
-# расширению 30 000 статических правил; встроенным оставляем запас.
+# Выбранные списки: настройка AdLists (Id из каталога) и AdListsCustom
+# (свои адреса). Пока настройки нет — списки по умолчанию.
+function Get-CgAdBlockLists {
+    $s = Get-CgSettings
+    $ids = @($script:CgAdBlockCatalog | Where-Object { $_.Default } | ForEach-Object { $_.Id })
+    if ($null -ne $s.AdLists) { $ids = @($s.AdLists) }
+    $out = @($script:CgAdBlockCatalog | Where-Object { $ids -contains $_.Id } | ForEach-Object { @{ Name = $_.Name; Url = $_.Url } })
+    foreach ($u in @($s.AdListsCustom)) {
+        $u = "$u".Trim()
+        if ($u -notmatch '^https://[^\s/]+/\S*$') { continue }
+        $name = $u -replace '^https://', ''
+        if ($name.Length -gt 48) { $name = $name.Substring(0, 45) + '...' }
+        $out += @{ Name = $name; Url = $u }
+    }
+    return $out
+}
+
+# Сколько правил в одном файле. Chrome гарантирует каждому расширению
+# 30 000 статических правил, а сверх того выделяет из общего запаса
+# браузера. Поэтому правила списков лежат в четырёх файлах: первый
+# браузер включает всегда, остальные — пока хватает общего запаса.
 $script:CgAdBlockMaxRules = 29000
+$script:CgAdBlockRuleFiles = @('rules\lists.json', 'rules\lists-2.json', 'rules\lists-3.json', 'rules\lists-4.json')
 
 function Get-CgAdBlockSrc { Join-Path (Get-CgRoot) 'adblock' }
 
@@ -45,7 +73,60 @@ function Get-CgAdBlockDir {
     return $d
 }
 
-$script:CgAdBlockListFiles = @('rules\lists.json', 'data\lists-cosmetic.json', 'data\lists-meta.json')
+$script:CgAdBlockListFiles = @($script:CgAdBlockRuleFiles) + @('data\lists-cosmetic.json', 'data\lists-generic.json', 'data\lists-meta.json', 'data\build.json')
+
+function Write-CgAdBlockText {
+    param([string]$Path, [string]$Text)
+    [IO.File]::WriteAllText($Path, $Text, (New-Object System.Text.UTF8Encoding $false))   # браузеру — без BOM
+}
+
+# Отметка сборки. Расширение раз в минуту сверяет её с той, с которой
+# загрузилось, и если программа что-то поменяла — перезагружается само.
+# Так новый код и свежие списки доходят до браузера без кнопки
+# «Обновить» на странице расширений.
+function Set-CgAdBlockBuild {
+    param([string]$Dir)
+    $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 6)
+    try { Write-CgAdBlockText (Join-Path $Dir 'data\build.json') ('{"stamp":"' + $stamp + '"}') } catch { }
+}
+
+# Пустые файлы правил, которых нет в копии, сделанной старой версией:
+# без них браузер не загрузит расширение с новым manifest.json.
+function Add-CgAdBlockRuleStubs {
+    param([string]$Dir)
+    foreach ($r in $script:CgAdBlockRuleFiles) {
+        $p = Join-Path $Dir $r
+        if (-not (Test-Path -LiteralPath $p)) { Write-CgAdBlockText $p '[]' }
+    }
+}
+
+# Привести рабочую копию к коду из программы: только изменившиеся
+# файлы, скачанные списки не трогаются. Вызывается при каждом запуске
+# окна: после обновления программы расширение догоняет её само.
+function Sync-CgAdBlockFiles {
+    $src = Get-CgAdBlockSrc
+    $dst = Join-Path (Join-Path $env:LOCALAPPDATA 'CookieGuard') 'adblock-ext'
+    if (-not (Test-Path -LiteralPath (Join-Path $dst 'manifest.json'))) { return 0 }   # расширение не ставили
+    if (-not (Test-Path -LiteralPath (Join-Path $src 'manifest.json'))) { return 0 }
+    $base = $src.TrimEnd('\').Length + 1
+    $n = 0
+    foreach ($f in (Get-ChildItem -LiteralPath $src -Recurse -File -Force)) {
+        $rel = $f.FullName.Substring($base)
+        if ($script:CgAdBlockListFiles -contains $rel) { continue }
+        $to = Join-Path $dst $rel
+        if ((Test-Path -LiteralPath $to) -and (Get-Item -LiteralPath $to).Length -eq $f.Length -and
+            [Linq.Enumerable]::SequenceEqual([byte[]][IO.File]::ReadAllBytes($to), [byte[]][IO.File]::ReadAllBytes($f.FullName))) { continue }
+        $dir = Split-Path -Parent $to
+        if (-not (Test-Path -LiteralPath $dir)) { $null = New-Item -ItemType Directory -Path $dir -Force }
+        try { Copy-Item -LiteralPath $f.FullName -Destination $to -Force -ErrorAction Stop; $n++ } catch { }
+    }
+    Add-CgAdBlockRuleStubs $dst
+    if ($n) {
+        Set-CgAdBlockBuild $dst
+        Write-CgLog 'INFO' "Блокировщик: код расширения обновлён (файлов: $n), браузер перезагрузит его сам"
+    }
+    return $n
+}
 
 # Скопировать код расширения в рабочую папку. Скачанные списки,
 # если они уже есть, остаются на месте.
@@ -71,6 +152,8 @@ function Install-CgAdBlockFiles {
         Copy-Item -LiteralPath $f.FullName -Destination $to -Force
         $n++
     }
+    Add-CgAdBlockRuleStubs $dst
+    Set-CgAdBlockBuild $dst
     return [PSCustomObject]@{ Ok = $true; Dir = $dst; Message = "Скопировано файлов: $n"; Copied = $n }
 }
 
@@ -114,7 +197,7 @@ function ConvertFrom-CgNetRule {
 
     $r = [PSCustomObject]@{
         Allow = $allow; Pattern = $body; Types = @(); NotTypes = @(); DomainType = ''
-        Init = @(); NotInit = @(); Case = $false; Important = $false
+        Init = @(); NotInit = @(); Case = $false; Important = $false; NotReq = @(); Methods = @()
     }
     if ($opts) {
         foreach ($o in ($opts -split ',')) {
@@ -139,6 +222,19 @@ function ConvertFrom-CgNetRule {
                 $r.Case = $true
             } elseif ($o -eq 'important') {
                 $r.Important = $true
+            } elseif ($o -eq 'all') {
+                # все типы — то же, что без указания типа
+            } elseif ($o.StartsWith('redirect=') -and -not $allow) {
+                # «заменить заглушкой»: заглушек у нас нет, но сам запрос
+                # всё равно рекламный — блокируем
+            } elseif ($o.StartsWith('denyallow=')) {
+                foreach ($d in ($o.Substring(10) -split '\|')) { if ($script:CgAbDomain.IsMatch($d)) { $r.NotReq += $d } }
+                if (-not $r.NotReq.Count) { return $null }
+            } elseif ($o.StartsWith('method=')) {
+                foreach ($mm in ($o.Substring(7) -split '\|')) {
+                    if ($mm -in @('get', 'post', 'head', 'put', 'delete', 'patch', 'options', 'connect')) { $r.Methods += $mm }
+                }
+                if (-not $r.Methods.Count) { return $null }
             } else {
                 return $null    # popup, csp, redirect, removeparam и прочее — не переводим
             }
@@ -171,6 +267,8 @@ function ConvertTo-CgDnrRule {
     if ($R.DomainType)       { $c += '"domainType":' + (ConvertTo-CgJsonString $R.DomainType) }
     if ($R.Init.Count)       { $c += '"initiatorDomains":' + (ConvertTo-CgJsonArray ($R.Init | Select-Object -Unique)) }
     if ($R.NotInit.Count)    { $c += '"excludedInitiatorDomains":' + (ConvertTo-CgJsonArray ($R.NotInit | Select-Object -Unique)) }
+    if (@($R.NotReq).Count)  { $c += '"excludedRequestDomains":' + (ConvertTo-CgJsonArray ($R.NotReq | Select-Object -Unique)) }
+    if (@($R.Methods).Count) { $c += '"requestMethods":' + (ConvertTo-CgJsonArray ($R.Methods | Select-Object -Unique)) }
     return ('{{"id":{0},"priority":{1},"action":{{"type":"{2}"}},"condition":{{{3}}}}}' -f $Id, $prio, $act, ($c -join ','))
 }
 
@@ -185,6 +283,16 @@ function ConvertFrom-CgFilterLists {
     $css = @{}
     $cssCount = 0
     $skipped = 0
+    # Общие правила скрытия (без сайта: «##.ad-banner»). Подставлять все
+    # на каждую страницу нельзя — их десятки тысяч. Поэтому каждое
+    # разложено по первому классу или id в селекторе; страница сообщает,
+    # какие классы и id в ней есть, и получает только подходящие.
+    $genCls = @{}; $genIds = @{}
+    $genKill = New-Object 'System.Collections.Generic.HashSet[string]'   # «#@#селектор» — отменён везде
+    $exc = @{}                                                            # сайт → отменённые на нём селекторы
+    $genOff = New-Object 'System.Collections.Generic.HashSet[string]'    # $generichide: общие на сайте не нужны
+    $genCount = 0
+    $tokRx = [regex]'^[a-zA-Z*]*([#.])([A-Za-z_][\w-]*)'
 
     foreach ($raw in $Lines) {
         $line = $raw.Trim()
@@ -194,28 +302,52 @@ function ConvertFrom-CgFilterLists {
         if ($line.Contains('#')) {
             $m = [regex]::Match($line, '^([^#]*)(##|#@#|#\?#|#\$#|#%#|#@\?#|#@\$#)(.+)$')
             if ($m.Success) {
-                if ($m.Groups[2].Value -ne '##') { $skipped++; continue }
-                $doms = @($m.Groups[1].Value -split ',' | ForEach-Object { $_.Trim().ToLowerInvariant() } |
-                          Where-Object { $_ -and -not $_.StartsWith('~') -and $script:CgAbDomain.IsMatch($_) })
+                $sep = $m.Groups[2].Value
+                if ($sep -ne '##' -and $sep -ne '#@#') { $skipped++; continue }
+                $all = @($m.Groups[1].Value -split ',' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
+                $doms = @($all | Where-Object { -not $_.StartsWith('~') -and $script:CgAbDomain.IsMatch($_) })
+                $nots = @($all | Where-Object { $_.StartsWith('~') } | ForEach-Object { $_.Substring(1) } | Where-Object { $script:CgAbDomain.IsMatch($_) })
                 $sel = $m.Groups[3].Value.Trim()
-                # общие правила без сайта не берём: тысячи селекторов на
-                # каждой странице и главный источник поломок
-                if (-not $doms.Count -or -not $sel -or $script:CgAbBadCss.IsMatch($sel) -or $sel.StartsWith('+js(')) { $skipped++; continue }
-                foreach ($d in $doms) {
-                    if (-not $css.ContainsKey($d)) { $css[$d] = New-Object System.Collections.ArrayList }
-                    $null = $css[$d].Add($sel)
-                    $cssCount++
+                if (-not $sel -or $script:CgAbBadCss.IsMatch($sel) -or $sel.StartsWith('+js(') -or $sel.Contains('{')) { $skipped++; continue }
+                if ($sep -eq '#@#') {
+                    if ($doms.Count) { foreach ($d in $doms) { if (-not $exc.ContainsKey($d)) { $exc[$d] = New-Object System.Collections.ArrayList }; $null = $exc[$d].Add($sel) } }
+                    elseif (-not $all.Count) { $null = $genKill.Add($sel) }
+                    continue
                 }
+                if ($doms.Count) {
+                    foreach ($d in $doms) {
+                        if (-not $css.ContainsKey($d)) { $css[$d] = New-Object System.Collections.ArrayList }
+                        $null = $css[$d].Add($sel)
+                        $cssCount++
+                    }
+                    continue
+                }
+                if ($all.Count -and -not $nots.Count) { $skipped++; continue }   # сайты указаны, но не разобрались
+                $tm = $tokRx.Match($sel)
+                if (-not $tm.Success) { $skipped++; continue }   # без класса или id — слишком дорого на каждой странице
+                $bag = $(if ($tm.Groups[1].Value -eq '.') { $genCls } else { $genIds })
+                $k = $tm.Groups[2].Value
+                if (-not $bag.ContainsKey($k)) { $bag[$k] = New-Object System.Collections.ArrayList }
+                $null = $bag[$k].Add($sel)
+                $genCount++
+                foreach ($d in $nots) { if (-not $exc.ContainsKey($d)) { $exc[$d] = New-Object System.Collections.ArrayList }; $null = $exc[$d].Add($sel) }
                 continue
             }
         }
         if ($line.Contains('$$')) { $skipped++; continue }
 
+        # сайты, где общие правила скрытия выключены самим списком
+        $gm = [regex]::Match($line, '^@@\|\|([a-z0-9.-]+)\^?\$(?:[^,]*,)*(generichide|ghide|elemhide|ehide)(,|$)')
+        if ($gm.Success) {
+            if ($script:CgAbDomain.IsMatch($gm.Groups[1].Value)) { $null = $genOff.Add($gm.Groups[1].Value) }
+            continue
+        }
+
         # ---- сетевые ----
         $r = ConvertFrom-CgNetRule $line
         if (-not $r) { $skipped++; continue }
         $pm = $script:CgAbPlainDomain.Match($r.Pattern)
-        $plain = ($pm.Success -and -not $r.Types.Count -and -not $r.NotTypes.Count -and -not $r.Init.Count -and -not $r.NotInit.Count -and -not $r.Case -and -not $r.Important)
+        $plain = ($pm.Success -and -not $r.Types.Count -and -not $r.NotTypes.Count -and -not $r.Init.Count -and -not $r.NotInit.Count -and -not $r.Case -and -not $r.Important -and -not $r.NotReq.Count -and -not $r.Methods.Count)
         if ($plain -and $script:CgAbDomain.IsMatch($pm.Groups[1].Value)) {
             $d = $pm.Groups[1].Value
             if ($r.Allow) { if (-not $r.DomainType) { $null = $allowDom.Add($d) } else { $null = $rules.Add($r) } }
@@ -245,33 +377,56 @@ function ConvertFrom-CgFilterLists {
     & $chunk $blockDom '' $false
     & $chunk $blockDom3p 'thirdParty' $false
     & $chunk $allowDom '' $true
+    # Остальные правила — по файлам, в каждом номера с единицы
+    $parts = New-Object System.Collections.ArrayList
+    $null = $parts.Add($out)
     $id = $script:id
     $dropped = 0
+    $total = $out.Count
     foreach ($r in $rules) {
-        if ($out.Count -ge $script:CgAdBlockMaxRules) { $dropped++; continue }
+        $cur = $parts[$parts.Count - 1]
+        if ($cur.Count -ge $script:CgAdBlockMaxRules) {
+            if ($parts.Count -ge $script:CgAdBlockRuleFiles.Count) { $dropped++; continue }
+            $cur = New-Object System.Collections.ArrayList
+            $null = $parts.Add($cur)
+            $id = 1
+        }
         $r | Add-Member -NotePropertyName Domains -NotePropertyValue $null -Force
-        $null = $out.Add((ConvertTo-CgDnrRule $r $id))
+        $null = $cur.Add((ConvertTo-CgDnrRule $r $id))
         $id++
+        $total++
     }
 
-    $cssJson = New-Object System.Text.StringBuilder
-    $null = $cssJson.Append('{')
-    $first = $true
-    foreach ($d in ($css.Keys | Sort-Object)) {
-        if (-not $first) { $null = $cssJson.Append(',') }
-        $first = $false
-        $null = $cssJson.Append((ConvertTo-CgJsonString $d)).Append(':').Append((ConvertTo-CgJsonArray ($css[$d] | Select-Object -Unique)))
+    $map = {
+        param($h, [scriptblock]$Filter)
+        $sb = New-Object System.Text.StringBuilder
+        $null = $sb.Append('{')
+        $first = $true
+        foreach ($k in ($h.Keys | Sort-Object)) {
+            $v = @($h[$k] | Select-Object -Unique)
+            if ($Filter) { $v = @($v | Where-Object $Filter) }
+            if (-not $v.Count) { continue }
+            if (-not $first) { $null = $sb.Append(',') }
+            $first = $false
+            $null = $sb.Append((ConvertTo-CgJsonString $k)).Append(':').Append((ConvertTo-CgJsonArray $v))
+        }
+        $null = $sb.Append('}')
+        $sb.ToString()
     }
-    $null = $cssJson.Append('}')
+    $notKilled = { -not $genKill.Contains($_) }
+    $gen = '{"cls":' + (& $map $genCls $notKilled) + ',"ids":' + (& $map $genIds $notKilled) +
+           ',"exc":' + (& $map $exc $null) + ',"off":' + (ConvertTo-CgJsonArray @($genOff | Sort-Object)) + '}'
 
     return [PSCustomObject]@{
-        RulesJson   = '[' + ($out -join ",`n") + ']'
-        CssJson     = $cssJson.ToString()
-        RuleCount   = $out.Count
-        DomainCount = $blockDom.Count + $blockDom3p.Count
-        CssCount    = $cssCount
-        Skipped     = $skipped
-        Dropped     = $dropped
+        RulesJson    = @($parts | ForEach-Object { '[' + ($_ -join ",`n") + ']' })
+        CssJson      = (& $map $css $null)
+        GenericJson  = $gen
+        RuleCount    = $total
+        DomainCount  = $blockDom.Count + $blockDom3p.Count
+        CssCount     = $cssCount
+        GenericCount = $genCount
+        Skipped      = $skipped
+        Dropped      = $dropped
     }
 }
 
@@ -287,7 +442,7 @@ function Update-CgAdBlockLists {
 
     $all = New-Object System.Collections.Generic.List[string]
     $got = @()
-    foreach ($l in $script:CgAdBlockLists) {
+    foreach ($l in @(Get-CgAdBlockLists)) {
         & $say "скачиваю $($l.Name)..."
         try {
             $r = Invoke-WebRequest -UseBasicParsing -Uri $l.Url -TimeoutSec 60 -ErrorAction Stop
@@ -296,7 +451,9 @@ function Update-CgAdBlockLists {
             # Invoke-WebRequest в Windows PowerShell читает текст без
             # кодировки в заголовке как Latin-1: перечитываем байты как UTF-8
             if ($r.RawContentStream) { $text = [Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray()) }
-            if ("$text" -notmatch '^\s*\[Adblock') { throw 'это не список Adblock' }
+            # заголовок «[Adblock Plus 2.0]» есть не у всех (у AdGuard — «!»);
+            # главное, чтобы это был список правил, а не страница сайта
+            if ("$text" -notmatch '^\s*!?\s*\[Adblock' -and "$text" -notmatch '(?m)^\|\|[a-z0-9.-]+\^') { throw 'это не список Adblock' }
             $all.AddRange([string[]]($text -split "`r?`n"))
             $got += $l.Name
         } catch {
@@ -310,22 +467,27 @@ function Update-CgAdBlockLists {
     & $say "перевожу $($all.Count) строк в правила браузера..."
     $c = ConvertFrom-CgFilterLists $all.ToArray()
 
-    $enc = New-Object System.Text.UTF8Encoding $false   # браузеру — без BOM
-    [IO.File]::WriteAllText((Join-Path $dir 'rules\lists.json'), $c.RulesJson, $enc)
-    [IO.File]::WriteAllText((Join-Path $dir 'data\lists-cosmetic.json'), $c.CssJson, $enc)
+    for ($i = 0; $i -lt $script:CgAdBlockRuleFiles.Count; $i++) {
+        $txt = '[]'
+        if ($i -lt @($c.RulesJson).Count) { $txt = @($c.RulesJson)[$i] }
+        Write-CgAdBlockText (Join-Path $dir $script:CgAdBlockRuleFiles[$i]) $txt
+    }
+    Write-CgAdBlockText (Join-Path $dir 'data\lists-cosmetic.json') $c.CssJson
+    Write-CgAdBlockText (Join-Path $dir 'data\lists-generic.json') $c.GenericJson
     $date = (Get-Date).ToString('dd.MM.yyyy')
     $meta = '{"date":' + (ConvertTo-CgJsonString $date) + ',"network":' + ($c.RuleCount + $c.DomainCount) +
-            ',"cosmetic":' + $c.CssCount + ',"sources":' + (ConvertTo-CgJsonArray $got) + '}'
-    [IO.File]::WriteAllText((Join-Path $dir 'data\lists-meta.json'), $meta, $enc)
+            ',"cosmetic":' + ($c.CssCount + $c.GenericCount) + ',"sources":' + (ConvertTo-CgJsonArray $got) + '}'
+    Write-CgAdBlockText (Join-Path $dir 'data\lists-meta.json') $meta
     # Старый индекс правил браузер иначе мог бы и дальше брать вместо
     # новых списков. Нет индекса — браузер построит его заново.
     try { Remove-Item -LiteralPath (Join-Path $dir '_metadata') -Recurse -Force -ErrorAction Stop } catch { }
+    Set-CgAdBlockBuild $dir
 
-    Write-CgLog 'INFO' ("Блокировщик: списки $($got -join ', '): правил $($c.RuleCount), доменов $($c.DomainCount), скрытий $($c.CssCount), не переведено $($c.Skipped), сверх лимита $($c.Dropped)")
+    Write-CgLog 'INFO' ("Блокировщик: списки $($got -join ', '): правил $($c.RuleCount), доменов $($c.DomainCount), скрытий по сайтам $($c.CssCount), общих скрытий $($c.GenericCount), не переведено $($c.Skipped), сверх лимита $($c.Dropped)")
     return [PSCustomObject]@{
         Ok = $true; Dir = $dir; Sources = $got
-        Rules = $c.RuleCount; Domains = $c.DomainCount; Cosmetic = $c.CssCount; Dropped = $c.Dropped
-        Message = ('Списки {0}: доменов {1}, правил {2}, правил скрытия {3}' -f ($got -join ' + '), $c.DomainCount, $c.RuleCount, $c.CssCount)
+        Rules = $c.RuleCount; Domains = $c.DomainCount; Cosmetic = $c.CssCount + $c.GenericCount; Dropped = $c.Dropped
+        Message = ('Списки {0}: доменов {1}, правил {2}, правил скрытия {3}' -f ($got -join ' + '), $c.DomainCount, $c.RuleCount, ($c.CssCount + $c.GenericCount))
     }
 }
 

@@ -275,7 +275,7 @@ function Initialize-CgLang {
     if ($script:CgLang -ne 'en') { return }
     try {
         if (-not ('Cg.Lang' -as [type])) {
-            Add-Type -TypeDefinition $script:CgLangSource -ReferencedAssemblies PresentationFramework, PresentationCore, WindowsBase, System.Xaml -ErrorAction Stop
+            Add-CgType 'Cg.Lang' $script:CgLangSource -Refs PresentationFramework, PresentationCore, WindowsBase, System.Xaml
         }
         if (-not [Cg.Lang]::Loaded) {
             . (Join-Path $PSScriptRoot 'Lang.en.ps1')

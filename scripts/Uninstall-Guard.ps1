@@ -3,7 +3,7 @@
 #  Снимает постоянного сторожа и наблюдателя, останавливает их.
 # ============================================================
 
-. (Join-Path $PSScriptRoot 'lib\Core.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Core.ps1')
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 
 if (-not (Test-CgAdmin)) {

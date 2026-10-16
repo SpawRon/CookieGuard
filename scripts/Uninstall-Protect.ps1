@@ -7,8 +7,8 @@
 #  Требуются права администратора.
 # ============================================================
 
-. (Join-Path $PSScriptRoot 'lib\Core.ps1')
-. (Join-Path $PSScriptRoot 'lib\Protect.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Core.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Protect.ps1')
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 
 if (-not (Test-CgAdmin)) {
@@ -24,7 +24,7 @@ Write-CgItem 'OK' 'Автозащита больше не включает ча�
 & (Join-Path $PSScriptRoot 'Uninstall-Guard.ps1')
 & (Join-Path $PSScriptRoot 'Uninstall-Audit.ps1')
 
-. (Join-Path $PSScriptRoot 'lib\Monitor.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Monitor.ps1')
 Remove-CgCanary
 Write-CgItem 'OK' 'Приманки убраны из папок браузеров'
 

@@ -1,0 +1,21 @@
+name: Missed threat / false alarm
+description: A stealer trick CookieGuard didn't catch, or an alarm on something harmless
+labels: [detection]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - Missed — something touched cookies or passwords and there was no alarm
+        - False alarm — a harmless program was flagged
+        - Ad blocker — an ad got through or a site broke
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Program name and publisher, file path, the finding text, or the site address. Never attach a live malware sample. A SHA-256 or VirusTotal link is enough.
+    validations:
+      required: true

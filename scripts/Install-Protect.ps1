@@ -14,9 +14,9 @@
 [CmdletBinding()]
 param([switch]$AutoNeutralize)
 
-. (Join-Path $PSScriptRoot 'lib\Core.ps1')
-. (Join-Path $PSScriptRoot 'lib\Checks.ps1')
-. (Join-Path $PSScriptRoot 'lib\Protect.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Core.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Checks.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Protect.ps1')
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 
 if (-not (Test-CgAdmin)) {
@@ -52,7 +52,7 @@ foreach ($p in (Get-CgProtectParts)) {
 
 # Копия hosts: с этого момента любое изменение будет видно,
 # даже сделанное, пока программа не работала
-. (Join-Path $PSScriptRoot 'lib\Hosts.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Hosts.ps1')
 if ($null -eq (Get-CgHostsSnapshot)) {
     $t = Read-CgHostsText
     if ($null -ne $t -and (Save-CgHostsSnapshot $t)) { Write-CgItem 'OK' 'Копия hosts запомнена' }

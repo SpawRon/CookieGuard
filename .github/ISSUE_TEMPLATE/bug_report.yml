@@ -1,0 +1,23 @@
+name: Bug report
+description: Something doesn't work or looks wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got. Screenshots help.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Protection → Program version (commit), and Windows version.
+      placeholder: "e.g. 3.1.0 / abc1234, Windows 10 22H2"
+  - type: textarea
+    id: log
+    attributes:
+      label: Log lines
+      description: The relevant lines from logs\cookieguard-*.log. Remove anything personal.
+      render: text

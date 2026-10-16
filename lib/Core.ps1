@@ -46,6 +46,43 @@ function Get-CgDir {
     return $d
 }
 
+# Свой код на C# (обход папок, перетаскивание, словарь, CryptoAPI).
+# Add-Type собирает его компилятором при каждом запуске — по 0,1–0,4 с
+# на тип, и всё это время окно не появлялось. Теперь сборка одна:
+# готовая библиотека ложится в cache\ под отпечатком исходника и
+# дальше просто загружается. Изменился исходник — другой отпечаток,
+# собирается заново.
+#
+# Папка данных закрыта на запись для всех, кроме администраторов, но
+# загружать библиотеку в процесс с правами администратора — слишком
+# лакомо, чтобы верить одной папке: чужая библиотека (владелец не
+# администраторы и не SYSTEM) не грузится, тип собирается в памяти.
+function Add-CgType {
+    param([Parameter(Mandatory)][string]$Type, [Parameter(Mandatory)][string]$Source, [string[]]$Refs = @())
+    if ($Type -as [type]) { return }
+    $p = @{ TypeDefinition = $Source; ErrorAction = 'Stop' }
+    if ($Refs.Count) { $p.ReferencedAssemblies = $Refs }
+    try {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        $h = $sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Source + '|' + ($Refs -join ',') + '|' + [Environment]::Version))
+        $key = -join ($h[0..7] | ForEach-Object { $_.ToString('x2') })
+        $dir = Get-CgDir 'cache'
+        $dll = Join-Path $dir "$Type.$key.dll"
+        if (-not (Test-Path -LiteralPath $dll)) {
+            Add-Type @p -OutputAssembly $dll -OutputType Library
+            Get-ChildItem -LiteralPath $dir -Filter "$Type.*.dll" -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -ne $dll } | Remove-Item -Force -ErrorAction SilentlyContinue
+        }
+        $owner = (Get-Acl -LiteralPath $dll).GetOwner([Security.Principal.SecurityIdentifier]).Value
+        $me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+        if ($owner -in @('S-1-5-32-544', 'S-1-5-18', $me)) {
+            Add-Type -Path $dll -ErrorAction Stop
+            return
+        }
+    } catch { }
+    if (-not ($Type -as [type])) { Add-Type @p }
+}
+
 # Дописать строку в файл так, чтобы её не потерять.
 #
 # В журнал пишут сразу двое: сторож от SYSTEM и окно. Add-Content

@@ -47,10 +47,12 @@ $ErrorActionPreference = 'Continue'
 #  New-CgWindow) Windows тогда и показывает.
 # ------------------------------------------------------------
 if (-not ('Cg.AppId' -as [type])) {
-    Add-Type -Namespace 'Cg' -Name 'AppId' -MemberDefinition @'
+    try { Add-CgType 'Cg.AppId' @'
+namespace Cg { public class AppId {
 [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
 public static extern int SetCurrentProcessExplicitAppUserModelID(string id);
-'@ -ErrorAction SilentlyContinue
+} }
+'@ } catch { }
 }
 try { $null = [Cg.AppId]::SetCurrentProcessExplicitAppUserModelID('CookieGuard.App') } catch { }
 
@@ -154,9 +156,115 @@ $app = @{
     MonMode    = ''
     Net        = $null
     AppData    = $null
+    ProbePs    = $null
+    ProbeRs    = $null
 }
 
 $ui.GridMon.ItemsSource = $app.MonItems
+
+# ------------------------------------------------------------
+#  Кэш медленных опросов системы
+#
+#  Антивирус, части защиты, DNS, задача сторожа и список файлов
+#  под наблюдением вместе отвечают секунды четыре-пять. Раньше их
+#  спрашивали в потоке окна сразу после показа — окно открывалось
+#  и замирало. Теперь окно рисуется мгновенно из снимка прошлого
+#  запуска (state\probe-cache.xml), а свежие ответы собирает
+#  фоновый поток и потом перерисовывает плитки.
+#
+#  Снимок отдаётся только на эти две перерисовки (CgProbeServe):
+#  всё, что человек делает потом, по-прежнему спрашивает систему
+#  вживую, и устаревшее состояние после его действий не покажется.
+# ------------------------------------------------------------
+$script:CgProbe = @{}
+$script:CgProbeServe = $false
+$script:CgProbeFile = Join-Path (Get-CgDir 'state') 'probe-cache.xml'
+
+# Антивирус и число файлов под наблюдением программа сама не меняет,
+# а плитки обзора перерисовываются после каждой проверки и каждого
+# исправления: для них свежим считается ответ не старше двух минут.
+$script:CgProbeAt = @{}
+$script:CgProbeTtl = @{ av = 120; targets = 120 }
+
+function Use-CgProbe {
+    param([string]$Key)
+    if ($script:CgProbe.ContainsKey($Key)) {
+        if ($script:CgProbeServe) { return $script:CgProbe[$Key] }
+        $ttl = $script:CgProbeTtl[$Key]
+        if ($ttl -and $script:CgProbeAt[$Key] -and ((Get-Date) - $script:CgProbeAt[$Key]).TotalSeconds -lt $ttl) { return $script:CgProbe[$Key] }
+    }
+    $v = & $script:CgProbeGet[$Key]
+    $script:CgProbe[$Key] = $v
+    $script:CgProbeAt[$Key] = Get-Date
+    return $v
+}
+
+# Опросы, которые кэшируются. Один и тот же список работает и в
+# окне, и в фоновом потоке: там те же модули.
+$script:CgProbeSet = {
+    @{
+        av        = { Get-CgAntivirusSummary }
+        targets   = { @(Get-CgTargetFiles).Count }
+        protect   = { @(Get-CgProtectStatus) }
+        dns       = { @(Get-CgDnsState) }
+        guardtask = { [bool](Get-ScheduledTask -TaskName 'CookieGuard Watcher' -ErrorAction SilentlyContinue) }
+        adblock   = { Get-CgAdBlockStatus }
+    }
+}
+$script:CgProbeGet = & $script:CgProbeSet
+
+$probeScript = {
+    param($sync, $set)
+    try {
+        foreach ($m in @('Core', 'Checks', 'Hosts', 'Monitor', 'Protect', 'Network', 'Agents', 'SafeDns', 'AdBlock')) {
+            . (Join-Path $sync.Root "lib\$m.ps1")
+        }
+        # Расширение — к коду этой версии программы (только если его ставили)
+        try { $null = Sync-CgAdBlockFiles } catch { }
+        $out = @{}
+        $q = & ([scriptblock]::Create($set))
+        foreach ($k in $q.Keys) { try { $out[$k] = & $q[$k] } catch { } }
+        $sync.Probe = $out
+    } catch { $sync.Error = "опрос системы: $($_.Exception.Message)" }
+    $sync.ProbeDone = $true
+}
+
+function Start-CgProbe {
+    if ($app.ProbePs) { return }
+    $sync.ProbeDone = $false; $sync.Probe = $null
+    $rs = [runspacefactory]::CreateRunspace()
+    $rs.ApartmentState = 'MTA'; $rs.Open()
+    $ps = [powershell]::Create(); $ps.Runspace = $rs
+    $null = $ps.AddScript($probeScript).AddArgument($sync).AddArgument($script:CgProbeSet.ToString())
+    $null = $ps.BeginInvoke()
+    $app.ProbePs = $ps; $app.ProbeRs = $rs
+}
+
+# Перерисовать всё, что зависит от опросов, отдавая снимок
+function Show-CgProbed {
+    $script:CgProbeServe = $true
+    try {
+        Update-Cards
+        Update-GuardStats
+        Update-DnsStats
+        Update-CgAdStats
+        Update-CgAutoUi
+    } finally { $script:CgProbeServe = $false }
+}
+
+function Read-CgProbeCache {
+    try {
+        if (Test-Path -LiteralPath $script:CgProbeFile) {
+            $h = Import-Clixml -LiteralPath $script:CgProbeFile
+            if ($h -is [hashtable] -and $h.Count) { $script:CgProbe = $h; return $true }
+        }
+    } catch { }
+    return $false
+}
+
+function Save-CgProbeCache {
+    try { $script:CgProbe | Export-Clixml -LiteralPath $script:CgProbeFile -Depth 4 } catch { }
+}
 
 # ------------------------------------------------------------
 #  Вспомогательное
@@ -210,7 +318,7 @@ function Update-Cards {
 
     # Спрашиваем не только Defender: под сторонним антивирусом Windows
     # штатно держит его выключенным, и красная плитка была бы ложной тревогой.
-    $av = Get-CgAntivirusSummary
+    $av = Use-CgProbe 'av'
     switch ($av.State) {
         'Defender' {
             $col = '#4ADE80'; if (-not $av.Fresh) { $col = '#FFB340' }
@@ -243,8 +351,8 @@ function Update-Cards {
     }
 
     $brs = Get-CgBrowsers
-    $tf = Get-CgTargetFiles
-    $null = $ui.Cards.Children.Add((New-Card 'Под наблюдением' ("{0} файлов" -f $tf.Count) '#ECEFF4' (($brs | ForEach-Object { $_.Name }) -join ', ')))
+    $tfCount = Use-CgProbe 'targets'
+    $null = $ui.Cards.Children.Add((New-Card 'Под наблюдением' ("{0} файлов" -f $tfCount) '#ECEFF4' (($brs | ForEach-Object { $_.Name }) -join ', ')))
 
     $bd = Get-CgBaselineDate
     if ($bd) {
@@ -765,7 +873,7 @@ $ui.BtnTrustRevoke.Add_Click({
 function Update-DnsStats {
     # @() обязательно: при одном сетевом подключении PowerShell разворачивает
     # массив в одиночный объект, и .Count становится пустым
-    $st = @(Get-CgDnsState)
+    $st = @(Use-CgProbe 'dns')
     if (-not $st.Count) { $ui.DnsStats.Text = (T 'сетевых подключений не найдено'); return }
     $on = @($st | Where-Object { $_.Filtering })
     if ($on.Count -eq $st.Count) {
@@ -817,7 +925,8 @@ function Show-CgNotify {
             $script:TrayIcon = New-Object System.Windows.Forms.NotifyIcon
             $script:TrayIcon.Icon = [System.Drawing.SystemIcons]::Shield
             $icoFile = Join-Path $PSScriptRoot 'CookieGuard.ico'
-            if (Test-Path -LiteralPath $icoFile) { try { $script:TrayIcon.Icon = New-Object System.Drawing.Icon $icoFile } catch { } }
+            # кадр нужного размера, а не 32 px, ужатый треем до каши
+            if (Test-Path -LiteralPath $icoFile) { try { $script:TrayIcon.Icon = New-Object System.Drawing.Icon($icoFile, [System.Windows.Forms.SystemInformation]::SmallIconSize) } catch { } }
             $script:TrayIcon.Text = 'CookieGuard'
             $script:TrayIcon.Visible = $true
             # клик по уведомлению поднимает окно
@@ -920,7 +1029,7 @@ $ui.BtnQuarDelete.Add_Click({
 
 # ----- постоянный сторож -----
 function Update-GuardStats {
-    $t = Get-ScheduledTask -TaskName 'CookieGuard Watcher' -ErrorAction SilentlyContinue
+    $t = Use-CgProbe 'guardtask'
     if ($t) {
         $live = Test-CgGuardAlive
         if ($live) { $ui.GuardStats.Text = (T 'установлен, работает'); $ui.GuardStats.Foreground = 'LightGreen' }
@@ -1568,7 +1677,7 @@ $ui.BtnProcAudit2.Add_Click({ $ui.BtnProcAudit.RaiseEvent((New-Object System.Win
 $script:CgAdOpenAfter = $null
 
 function Update-CgAdStats {
-    $st = Get-CgAdBlockStatus
+    $st = Use-CgProbe 'adblock'
     $parts = @()
     if (@($st.LoadedIn).Count) { $parts += ('подключён: {0}' -f (@($st.LoadedIn) -join ', ')) }
     elseif ($st.Copied) { $parts += 'файлы готовы, в браузер ещё не подключён' }
@@ -1628,13 +1737,54 @@ $ui.BtnAdLists.Add_Click({
     Start-BgTask 'adlists' 'Скачиваю и перевожу списки рекламы...'
 })
 
+# Какие списки брать. Каталог — в lib\AdBlock.ps1; выбор хранится в
+# настройках (AdLists, AdListsCustom) и действует при каждом обновлении.
+function Select-CgAdLists {
+    $s = Get-CgSettings
+    $cur = @($script:CgAdBlockCatalog | Where-Object { $_.Default } | ForEach-Object { $_.Id })
+    if ($null -ne $s.AdLists) { $cur = @($s.AdLists) }
+    $items = @($script:CgAdBlockCatalog | ForEach-Object {
+        $sub = $_.Note
+        if ($_.Default) { $sub += ' · по умолчанию' }
+        [PSCustomObject]@{ Title = $_.Name; Sub = $sub; Checked = ($cur -contains $_.Id); Risky = $false }
+    })
+    $own = @($s.AdListsCustom | Where-Object { $_ }).Count
+    $text = 'Чем больше списков, тем меньше рекламы проскакивает, но тем дольше перевод и выше шанс, что сайт что-то спрячет зря. Свой адрес — в меню «Свой список по адресу».'
+    if ($own) { $text += " Своих списков подключено: $own." }
+    $pick = Show-CgChecklistDialog -Title 'Списки рекламы' -Text $text -Items $items -OkText 'Сохранить и скачать'
+    if ($null -eq $pick) { return }
+    $ids = @($pick | ForEach-Object { $script:CgAdBlockCatalog[$_].Id })
+    if (-not (Set-CgSetting 'AdLists' $ids)) { Set-Status 'Не удалось сохранить выбор списков'; return }
+    Start-BgTask 'adlists' 'Скачиваю и перевожу списки рекламы...'
+}
+
+function Add-CgAdCustomList {
+    $s = Get-CgSettings
+    $cur = (@($s.AdListsCustom) | Where-Object { $_ }) -join ' '
+    $v = Show-CgPrompt -Title 'Свой список рекламы' `
+        -Text 'Адрес списка в формате Adblock — как у EasyList или AdGuard. Несколько адресов — через пробел. Пустое поле убирает свои списки.' `
+        -Default $cur -Hint 'https://example.org/filters.txt' -OkText 'Сохранить и скачать'
+    if ($null -eq $v) { return }
+    $urls = @("$v" -split '[\s,;]+' | Where-Object { $_ } | Select-Object -Unique)
+    $bad = @($urls | Where-Object { $_ -notmatch '^https://[^\s/]+/\S*$' })
+    if ($bad.Count) {
+        $null = Show-CgDialog -Title 'Адрес не подходит' -Kind 'warn' -Subject ($bad -join "`n") `
+            -Text 'Нужен полный адрес, начинающийся с https:// — списки по незащищённому http подменяются по дороге.'
+        return
+    }
+    if (-not (Set-CgSetting 'AdListsCustom' $urls)) { Set-Status 'Не удалось сохранить адреса'; return }
+    Start-BgTask 'adlists' 'Скачиваю и перевожу списки рекламы...'
+}
+
 $ui.BtnAdFolder.Add_Click({
     $null = Install-CgAdBlockFiles
     Start-Process explorer.exe (Get-CgAdBlockDir)
 })
 
 $ui.BtnHelp.Add_Click({
-    $p = Join-Path $PSScriptRoot 'README.md'
+    # полное руководство — по-русски; в английском режиме — README
+    $p = Join-Path $PSScriptRoot 'docs\GUIDE.ru.md'
+    if ($script:CgLang -eq 'en' -or -not (Test-Path -LiteralPath $p)) { $p = Join-Path $PSScriptRoot 'README.md' }
     if (Test-Path -LiteralPath $p) { Start-Process notepad.exe $p } else { Set-Status 'Файл справки не найден' }
 })
 
@@ -1683,7 +1833,7 @@ function Invoke-AuditScript {
     # «Не удаётся найти позиционный параметр, принимающий аргумент $null»
     $Extra = @($Extra | Where-Object { $_ })
 
-    $sp = Join-Path $PSScriptRoot $ScriptName
+    $sp = Join-Path $PSScriptRoot "scripts\$ScriptName"
     if (-not (Test-Path -LiteralPath $sp)) {
         $null = Show-CgDialog -Title "$What — не найден нужный файл" `
             -Text 'Похоже, установка повреждена: переустановите программу.' -Subject $sp -Kind 'danger'
@@ -1856,6 +2006,19 @@ $timer.Add_Tick({
         $sync.Error = $null
     }
 
+    # свежий опрос системы готов — перерисовать плитки и запомнить снимок
+    if ($sync.ProbeDone) {
+        $sync.ProbeDone = $false
+        try { $app.ProbePs.Dispose(); $app.ProbeRs.Close(); $app.ProbeRs.Dispose() } catch { }
+        $app.ProbePs = $null; $app.ProbeRs = $null
+        if ($sync.Probe) {
+            foreach ($k in @($sync.Probe.Keys)) { $script:CgProbe[$k] = $sync.Probe[$k]; $script:CgProbeAt[$k] = Get-Date }
+            $sync.Probe = $null
+            Show-CgProbed
+            Save-CgProbeCache
+        }
+    }
+
     # результаты фоновых задач (процессы, расширения, автозапуск)
     if ($sync.BgDone) {
         $kind = $sync.BgKind
@@ -1892,7 +2055,7 @@ $timer.Add_Tick({
                         Open-CgAdBlockSteps $b
                     } else {
                         $null = Show-CgDialog -Title 'Списки обновлены' -Kind 'ok' -Text $info.Message `
-                            -Subject 'Чтобы браузер их подхватил, нажмите «Перечитать списки» в настройках расширения (значок CookieGuard → Настройки) или перезапустите браузер.'
+                            -Subject 'Расширение подхватит их само в течение минуты. Если оно подключено старой версией программы, один раз перезапустите браузер — дальше обновления доходят сами.'
                     }
                 } else {
                     Set-Busy $false 'Списки не обновлены'
@@ -2005,7 +2168,7 @@ $tips = @{
     BtnScanFiles   = 'Страница проверки файлов. Файл или папку можно бросить в любое место окна — программа сама распакует архив, спросит пароль и решит, что имеет смысл проверять.'
     BtnScanFiles2  = 'Перейти к проверке файлов. Файл можно просто бросить в окно.'
     BtnAdInstall   = 'Подключить свой блокировщик рекламы CookieGuard к Chrome, Edge или Brave. Запросы к рекламе режет сам браузер; расширению запрещено ходить в сеть.'
-    BtnAdLists     = 'Скачать свежие EasyList и RuAdList и перевести их в правила браузера. Из списков берутся только адреса и CSS-селекторы.'
+    BtnAdLists     = 'Скачать свежие выбранные списки (по умолчанию EasyList, RuAdList, EasyPrivacy, Peter Lowe) и перевести их в правила браузера. Из списков берутся только адреса и CSS-селекторы.'
     BtnAdFolder    = 'Открыть папку расширения: весь его код там, его можно прочитать.'
     BtnFixAll      = 'Исправить разом всё, что программа умеет исправлять сама. Покажет список с галочками — снимите те, что оставили намеренно. Каждое исправление обратимо.'
     BtnFixAll2     = 'Исправить разом всё, что программа умеет исправлять сама. Покажет список с галочками.'
@@ -2136,8 +2299,16 @@ $ui.Nav.Add_SelectionChanged({
         # Сеть и AppData считаются при первом открытии раздела
         if ($script:CgNavToPage[$i] -eq $script:CgPageByKey['net'] -and $null -eq $app.Net) { Refresh-Net }
         if ($script:CgNavToPage[$i] -eq $script:CgPageByKey['appdata'] -and $null -eq $app.AppData) { Refresh-AppData }
-        if ($script:CgNavToPage[$i] -eq $script:CgPageByKey['guard'] -and $ui.AutoPartsBox.Visibility -eq 'Visible') { Update-CgAutoUi }
-        Start-CgPageFade
+        # Плиты защиты — сразу из последнего опроса, свежий идёт в фоне
+        # (живой опрос частей занимает полторы секунды, окно замирало)
+        if ($script:CgNavToPage[$i] -eq $script:CgPageByKey['guard'] -and $ui.AutoPartsBox.Visibility -eq 'Visible') {
+            if ($script:CgProbe.ContainsKey('protect')) {
+                $script:CgProbeServe = $true
+                try { Update-CgAutoUi } finally { $script:CgProbeServe = $false }
+                Start-CgProbe
+            } else { Update-CgAutoUi }
+        }
+        if (Get-Command Start-CgPageFade -ErrorAction SilentlyContinue) { Start-CgPageFade }
     }
 })
 $ui.Nav.SelectedIndex = 0
@@ -2545,8 +2716,7 @@ function Sync-CgToggles {
         if ($on) { $ui.AuditSub.Text = (T 'Windows записывает, какая программа открывает базу cookie и паролей.') }
         else { $ui.AuditSub.Text = (T 'Выключен: не видно, кто брал cookie. Это главное, ради чего программа нужна.') }
 
-        $t = Get-ScheduledTask -TaskName 'CookieGuard Watcher' -ErrorAction SilentlyContinue
-        $ui.TglGuard.IsChecked = [bool]$t
+        $ui.TglGuard.IsChecked = [bool](Use-CgProbe 'guardtask')
 
         # «Журнал запуска программ» был кнопкой «Включить» без состояния:
         # включённый журнал выглядел выключенным, и его включали снова и
@@ -2598,7 +2768,7 @@ function New-CgText {
 
 function Update-CgAutoUi {
     $st = @()
-    try { $st = @(Get-CgProtectStatus) } catch { }
+    try { $st = @(Use-CgProbe 'protect') } catch { }
     $auto = [bool](Get-CgSettings).AutoProtect
     $ui.AutoParts.Children.Clear()
     $bad = 0; $unknown = 0; $ok = 0
@@ -2627,7 +2797,7 @@ function Update-CgAutoUi {
         $null = $sp.Children.Add($head)
 
         $line = $script:CgPartShort[$p.Key]; if (-not $line) { $line = $p.Why }
-        if ($p.Key -eq 'agents' -and $agentsNote) { $line = $agentsNote + ' · ' + $line }
+        if ($p.Key -eq 'agents' -and $agentsNote) { $line = (T $agentsNote) + ' · ' + (T $line) }
         $lt = New-CgText (T $line) 12.5 '#A3ACB9' '20,6,0,0'
         $lt.ToolTip = (T $p.Why)
         $null = $sp.Children.Add($lt)
@@ -2717,6 +2887,8 @@ Add-CgMoreMenu $ui.BtnDnsMain {
 }
 Add-CgMoreMenu $ui.BtnAdMore @(
     @{ Text = 'Обновить списки рекламы'; Action = { Invoke-CgButton $ui.BtnAdLists } }
+    @{ Text = 'Выбрать списки рекламы…'; Action = { Select-CgAdLists } }
+    @{ Text = 'Свой список по адресу…'; Action = { Add-CgAdCustomList } }
     @{ Text = 'Открыть папку расширения'; Action = { Invoke-CgButton $ui.BtnAdFolder } }
 )
 Add-CgMoreMenu $ui.BtnVtMore @(
@@ -2890,10 +3062,12 @@ $script:InitDone = $false
 function Invoke-CgLateInit {
     if ($script:InitDone) { return }
     $script:InitDone = $true
-    Update-Cards
+    # Плитки — из снимка прошлого запуска, свежее догонит фоновый опрос.
+    # Самый первый запуск снимка не имеет: плитки появятся по готовности.
+    if (Read-CgProbeCache) { Show-CgProbed }
+    Start-CgProbe
     Update-VtStats
     Update-BaseStats
-    Update-GuardStats
     Update-CgVersionText
     Refresh-Quar
     Refresh-Trust
@@ -2907,17 +3081,17 @@ function Invoke-CgLateInit {
         $null = $ui.CmbDns.Items.Add($it)
     }
     $ui.CmbDns.SelectedIndex = 0
-    Update-DnsStats
-    Update-CgAdStats
     Refresh-Log
     # Сторож на старой версии (обновление ставило прежнее окно, которое
     # не умело его перезапускать) — перезапускаем сразу, права есть
+    # Первый запуск после переезда сценариев в scripts\: задачи
+    # планировщика ещё зовут корневые копии
+    if ($app.IsAdmin) { try { $null = Update-CgScriptLayout } catch { } }
     $gi = Get-CgGuardInfo
     if ($gi.Alive -and -not (Test-CgGuardCurrent) -and $app.IsAdmin) {
         if (Restart-CgGuard) { Write-CgLog 'INFO' 'Сторож работал на старой версии — перезапущен из окна' }
     }
     $ui.ChkAutoNeutr.IsChecked = [bool](Get-CgSettings).AutoNeutralize
-    Update-CgAutoUi
     # Прошлые события — из летописи на диске: список не начинается с
     # пустоты после перезапуска, перезагрузки или обновления
     try {

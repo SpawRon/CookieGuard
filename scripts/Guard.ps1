@@ -11,9 +11,9 @@ param(
     [switch]$NoProcWatch     # не следить за новыми процессами
 )
 
-. (Join-Path $PSScriptRoot 'lib\Core.ps1')
-. (Join-Path $PSScriptRoot 'lib\Checks.ps1')
-. (Join-Path $PSScriptRoot 'lib\Monitor.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Core.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Checks.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Monitor.ps1')
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 $ErrorActionPreference = 'SilentlyContinue'
 

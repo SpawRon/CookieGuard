@@ -3,18 +3,21 @@
   "name": "__MSG_extName__",
   "short_name": "CG AdBlock",
   "description": "__MSG_extDesc__",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "default_locale": "ru",
   "minimum_chrome_version": "111",
   "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
-  "permissions": ["declarativeNetRequest", "storage", "activeTab"],
+  "permissions": ["declarativeNetRequest", "storage", "activeTab", "alarms"],
   "background": { "service_worker": "background.js" },
   "action": { "default_popup": "popup.html", "default_title": "__MSG_extName__", "default_icon": { "16": "icons/16.png", "32": "icons/32.png" } },
   "options_page": "options.html",
   "declarative_net_request": {
     "rule_resources": [
       { "id": "base",  "enabled": true, "path": "rules/base.json" },
-      { "id": "lists", "enabled": true, "path": "rules/lists.json" }
+      { "id": "lists",   "enabled": true, "path": "rules/lists.json" },
+      { "id": "lists-2", "enabled": true, "path": "rules/lists-2.json" },
+      { "id": "lists-3", "enabled": true, "path": "rules/lists-3.json" },
+      { "id": "lists-4", "enabled": true, "path": "rules/lists-4.json" }
     ]
   },
   "content_scripts": [

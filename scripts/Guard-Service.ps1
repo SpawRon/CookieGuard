@@ -23,7 +23,7 @@ param(
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
-$root = $PSScriptRoot
+$root = Split-Path -Parent $PSScriptRoot
 . (Join-Path $root 'lib\Core.ps1')
 . (Join-Path $root 'lib\Checks.ps1')
 . (Join-Path $root 'lib\Trust.ps1')
@@ -57,7 +57,7 @@ $script:Tray = $null
 try {
     $script:Tray = New-Object System.Windows.Forms.NotifyIcon
     $script:Tray.Icon = [System.Drawing.SystemIcons]::Shield
-    $ico = Join-Path $PSScriptRoot 'CookieGuard.ico'
+    $ico = Join-Path $root 'CookieGuard.ico'
     if (Test-Path -LiteralPath $ico) { try { $script:Tray.Icon = New-Object System.Drawing.Icon $ico } catch { } }
     $script:Tray.Visible = $true
     $script:Tray.Text = 'CookieGuard — сторож'

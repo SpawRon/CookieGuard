@@ -26,7 +26,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$src = $PSScriptRoot
+$src = Split-Path -Parent $PSScriptRoot
 . (Join-Path $src 'lib\Core.ps1')
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 
@@ -36,7 +36,7 @@ if (-not (Test-CgAdmin)) {
 }
 
 $AppName = 'CookieGuard'
-$Version = '1.0.0'
+$Version = '3.1.0'
 $Publisher = 'CookieGuard'
 $dataDir = Join-Path $env:ProgramData 'CookieGuard'
 
@@ -175,7 +175,7 @@ foreach ($d in @('state', 'quarantine', 'reports', 'evidence', 'logs')) {
 
 # ---- 5. ярлыки ----
 $target = Join-Path $Path 'CookieGuard.exe'
-if (-not (Test-Path -LiteralPath $target)) { $target = Join-Path $Path 'CookieGuard.cmd' }
+if (-not (Test-Path -LiteralPath $target)) { $target = Join-Path $Path 'scripts\CookieGuard.cmd' }
 $ico = Join-Path $Path 'CookieGuard.ico'
 
 function New-CgShortcut {
@@ -204,7 +204,7 @@ try {
     $key = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\CookieGuard'
     if (-not (Test-Path $key)) { New-Item -Path $key -Force | Out-Null }
     $size = [math]::Round((Get-ChildItem -LiteralPath $Path -Recurse -File | Measure-Object Length -Sum).Sum / 1KB)
-    $un = "`"$env:windir\System32\WindowsPowerShell\v1.0\powershell.exe`" -NoProfile -ExecutionPolicy Bypass -File `"$Path\Uninstall.ps1`""
+    $un = "`"$env:windir\System32\WindowsPowerShell\v1.0\powershell.exe`" -NoProfile -ExecutionPolicy Bypass -File `"$Path\scripts\Uninstall.ps1`""
     foreach ($kv in @{
         DisplayName     = $AppName
         DisplayVersion  = $Version
@@ -216,7 +216,7 @@ try {
         NoModify        = 1
         NoRepair        = 1
         EstimatedSize   = $size
-        URLInfoAbout    = 'https://github.com/'
+        URLInfoAbout    = 'https://github.com/SpawRon/CookieGuard'
     }.GetEnumerator()) {
         $type = 'String'
         if ($kv.Value -is [int]) { $type = 'DWord' }
@@ -231,13 +231,13 @@ try {
 if ($Autostart) {
     Write-Host ''
     Write-Host '  Включаю постоянную защиту...' -ForegroundColor DarkGray
-    & (Join-Path $Path 'Install-Guard.ps1')
+    & (Join-Path $Path 'scripts\Install-Guard.ps1')
 }
 
 Write-Host ''
 Write-Host "  Установлено: $Path" -ForegroundColor Green
 Write-Host '  Запуск: меню «Пуск» → CookieGuard' -ForegroundColor Green
-Write-Host '  Удаление: Параметры → Приложения → CookieGuard, либо Uninstall.ps1' -ForegroundColor DarkGray
+Write-Host '  Удаление: Параметры → Приложения → CookieGuard, либо scripts\Uninstall.ps1' -ForegroundColor DarkGray
 Write-Host ''
 Write-CgLog 'INFO' "Программа установлена в $Path"
 

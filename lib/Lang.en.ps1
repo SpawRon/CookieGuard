@@ -1999,4 +1999,29 @@ Windows записывает, кто открыл базу cookie	Windows record
 AppData разложена по полкам	AppData sorted out
 менялась за неделю	changed this week
 в автозапуске	in autostart
+# ---- ad blocker: filter list picker, own URLs, self-update ----
+Выбрать списки рекламы…	Choose filter lists…
+Свой список по адресу…	Your own list by URL…
+Списки рекламы	Filter lists
+Сохранить и скачать	Save and download
+Чем больше списков, тем меньше рекламы проскакивает, но тем дольше перевод и выше шанс, что сайт что-то спрячет зря.	More lists let fewer ads through, but take longer to convert and are more likely to hide something by mistake.
+Свой адрес — в меню «Свой список по адресу».	Your own URL goes in the "Your own list by URL" menu item.
+Своих списков подключено: {0}.	Own lists connected: {0}.
+основной мировой список рекламы	the main worldwide ad list
+реклама на русскоязычных сайтах	ads on Russian-language sites
+счётчики, трекеры и сборщики статистики	counters, trackers and analytics collectors
+короткий список рекламных и следящих серверов	a short list of ad and tracking servers
+второй взгляд на рунет: ловит то, что пропускает RuAdList	a second pass over the Russian web: catches what RuAdList misses
+мировая реклама сверх EasyList	worldwide ads beyond EasyList
+всплывающие окна, баннеры cookie, виджеты соцсетей	pop-ups, cookie banners, social widgets
+сайты, которые требуют выключить блокировщик	sites that demand you turn the blocker off
+Свой список рекламы	Your own filter list
+Адрес списка в формате Adblock — как у EasyList или AdGuard. Несколько адресов — через пробел. Пустое поле убирает свои списки.	URL of a list in Adblock format, like EasyList or AdGuard. Separate several URLs with spaces. An empty field removes your own lists.
+Адрес не подходит	This URL won't work
+Нужен полный адрес, начинающийся с https:// — списки по незащищённому http подменяются по дороге.	A full URL starting with https:// is required: lists sent over plain http can be swapped in transit.
+Не удалось сохранить выбор списков	Could not save the list selection
+Не удалось сохранить адреса	Could not save the URLs
+Расширение подхватит их само в течение минуты. Если оно подключено старой версией программы, один раз перезапустите браузер — дальше обновления доходят сами.	The extension picks them up by itself within a minute. If it was installed by an older version of the app, restart the browser once; after that updates arrive on their own.
+Скачать свежие выбранные списки (по умолчанию EasyList, RuAdList, EasyPrivacy, Peter Lowe) и перевести их в правила браузера. Из списков берутся только адреса и CSS-селекторы.	Download fresh copies of the chosen lists (by default EasyList, RuAdList, EasyPrivacy, Peter Lowe) and convert them into browser rules. Only addresses and CSS selectors are taken from the lists.
+{0} из {1} на связи	{0} of {1} checking in
 '@

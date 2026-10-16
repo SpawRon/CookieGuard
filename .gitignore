@@ -24,3 +24,6 @@ installed-commit.txt
 Thumbs.db
 desktop.ini
 *.tmp
+
+# собранные один раз библиотеки C# (lib\Core.ps1, Add-CgType)
+cache/

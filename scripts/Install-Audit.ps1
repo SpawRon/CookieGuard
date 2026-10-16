@@ -12,7 +12,7 @@ param(
     [int]$SecurityLogMB = 256      # размер журнала безопасности
 )
 
-. (Join-Path $PSScriptRoot 'lib\Core.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Core.ps1')
 
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 

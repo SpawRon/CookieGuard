@@ -1,0 +1,36 @@
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PowerShell parses
+        shell: powershell
+        run: |
+          $bad = 0
+          Get-ChildItem -Recurse -Filter *.ps1 | ForEach-Object {
+            $err = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$err)
+            if ($err) { $bad++; Write-Host "::error file=$($_.FullName),line=$($err[0].Extent.StartLineNumber)::$($err[0].Message)" }
+          }
+          if ($bad) { exit 1 }
+
+      - name: Extension JSON and JavaScript
+        shell: bash
+        run: |
+          for f in $(find adblock -name '*.json'); do node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))" || exit 1; done
+          for f in adblock/*.js; do node --check "$f" || exit 1; done
+
+      - name: Launcher compiles
+        shell: powershell
+        run: |
+          $csc = "$env:windir\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          & $csc /nologo /target:winexe /out:"$env:RUNNER_TEMP\cg.exe" /win32icon:CookieGuard.ico /win32manifest:build\app.manifest /reference:System.Windows.Forms.dll build\Launcher.cs
+          if ($LASTEXITCODE) { exit 1 }

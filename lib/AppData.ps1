@@ -19,7 +19,7 @@ $ErrorActionPreference = 'SilentlyContinue'
 # а [IO.Directory]::EnumerateFiles обрывается на первой же папке
 # без доступа или ссылке-петле («Application Data» → сама Local).
 if (-not ('Cg.DirWalk' -as [type])) {
-    Add-Type -TypeDefinition @'
+    try { Add-CgType 'Cg.DirWalk' @'
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -71,7 +71,7 @@ namespace Cg {
         }
     }
 }
-'@ -ErrorAction SilentlyContinue
+'@ } catch { }
 }
 
 function Format-CgSize {

@@ -32,7 +32,7 @@ function Get-CgPsExe { Join-Path $env:windir 'System32\WindowsPowerShell\v1.0\po
 # ------------------------------------------------------------
 function Register-CgGuardTask {
     param([switch]$AutoNeutralize)
-    $guardPs = Join-Path (Get-CgRoot) 'Guard-Service.ps1'
+    $guardPs = Join-Path (Get-CgRoot) 'scripts\Guard-Service.ps1'
     $taskArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$guardPs`""
     if ($AutoNeutralize) { $taskArgs += ' -AutoNeutralize' }
     # WorkingDirectory не задаём намеренно: планировщик от SYSTEM отвергает
@@ -47,7 +47,7 @@ function Register-CgGuardTask {
 }
 
 function Register-CgWatchdogTask {
-    $dogPs = Join-Path (Get-CgRoot) 'Watchdog.ps1'
+    $dogPs = Join-Path (Get-CgRoot) 'scripts\Watchdog.ps1'
     $action = New-ScheduledTaskAction -Execute (Get-CgPsExe) -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$dogPs`""
     # Повтор БЕЗ -RepetitionDuration. С [TimeSpan]::MaxValue Windows 10
     # отвечает «The task XML contains a value which is incorrectly
@@ -103,7 +103,7 @@ function Test-CgGuardAlive { (Get-CgGuardInfo).Alive }
 function Get-CgCodeStamp {
     $t = [datetime]::MinValue
     $root = Get-CgRoot
-    foreach ($f in @(Get-Item -LiteralPath (Join-Path $root 'Guard-Service.ps1') -ErrorAction SilentlyContinue) +
+    foreach ($f in @(Get-Item -LiteralPath (Join-Path $root 'scripts\Guard-Service.ps1') -ErrorAction SilentlyContinue) +
                    @(Get-ChildItem -LiteralPath (Join-Path $root 'lib') -Filter *.ps1 -File -ErrorAction SilentlyContinue)) {
         if ($f.LastWriteTimeUtc -gt $t) { $t = $f.LastWriteTimeUtc }
     }
@@ -124,13 +124,81 @@ function Restart-CgGuard {
     # Только сторож этой установки и только если он не завершился сам:
     # прежде гасились все powershell с «Guard-Service.ps1» в строке,
     # включая чужие копии и проверочные запуски.
-    $mine = [regex]::Escape((Join-Path (Get-CgRoot) 'Guard-Service.ps1'))
+    # (и с прежнего места в корне: до переезда в scripts\ сторож жил там)
+    $mine = [regex]::Escape((Get-CgRoot).TrimEnd('\')) + '\\(scripts\\)?Guard-Service\.ps1'
     foreach ($p in (Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue)) {
         if ($p.ProcessId -eq $PID) { continue }
         if ("$($p.CommandLine)" -match "(?i)$mine") { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch { } }
     }
     Start-Sleep -Milliseconds 600
     try { Start-ScheduledTask -TaskName $script:CgTaskGuard -ErrorAction Stop; return $true } catch { return $false }
+}
+
+# ------------------------------------------------------------
+#  Переезд сценариев в scripts\ (октябрь 2026)
+#
+#  Сторож, наблюдатель, установка и прочие сценарии лежали в корне.
+#  Обновление копирует новые файлы, но старые не удаляет, а задачи
+#  планировщика продолжают звать корневые копии — то есть старый
+#  код. Окно с правами администратора один раз перенаправляет задачи
+#  и запись «Приложения и возможности» на scripts\ и убирает
+#  корневые копии. Пока перенаправить не удалось, копии остаются:
+#  лучше старый сторож, чем никакого.
+# ------------------------------------------------------------
+$script:CgMovedScripts = @(
+    'Guard-Service.ps1', 'Watchdog.ps1', 'Guard.ps1', 'Scan.ps1', 'Install.ps1', 'Uninstall.ps1',
+    'Install-Audit.ps1', 'Install-Guard.ps1', 'Install-ProcAudit.ps1', 'Install-Protect.ps1',
+    'Uninstall-Audit.ps1', 'Uninstall-Guard.ps1', 'Uninstall-Protect.ps1', 'CookieGuard.cmd')
+
+function Update-CgScriptLayout {
+    $root = Get-CgRoot
+    $new = Join-Path $root 'scripts'
+    if (-not (Test-Path -LiteralPath (Join-Path $new 'Guard-Service.ps1'))) { return $false }
+    $stale = @($script:CgMovedScripts | Where-Object { Test-Path -LiteralPath (Join-Path $root $_) })
+    $oldCmd = Join-Path $root 'УСТАНОВИТЬ.cmd'   # прежнее имя Setup.cmd
+    if (-not $stale.Count -and -not (Test-Path -LiteralPath $oldCmd)) { return $false }
+
+    $ok = $true
+    $restart = $false
+    foreach ($t in @(@{ Name = $script:CgTaskGuard; File = 'Guard-Service.ps1' }, @{ Name = $script:CgTaskDog; File = 'Watchdog.ps1' })) {
+        try {
+            $task = Get-ScheduledTask -TaskName $t.Name -ErrorAction Stop
+        } catch { continue }   # задачи нет — и переводить нечего
+        # Только задачи, которые зовут корневую копию ЭТОЙ установки:
+        # переносная копия не должна перехватывать сторожа установленной
+        $a = "$(@($task.Actions)[0].Arguments)"
+        if ($a -notmatch [regex]::Escape((Join-Path $root $t.File))) { continue }
+        try {
+            if ($t.File -eq 'Guard-Service.ps1') {
+                Register-CgGuardTask -AutoNeutralize:($a -match '-AutoNeutralize')
+                $restart = $true
+            } else { Register-CgWatchdogTask }
+        } catch {
+            $ok = $false
+            Write-CgLog 'WARN' "Переезд в scripts\: задачу «$($t.Name)» перенаправить не удалось: $($_.Exception.Message)"
+        }
+    }
+
+    try {
+        $key = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\CookieGuard'
+        $u = (Get-ItemProperty -Path $key -ErrorAction Stop).UninstallString
+        $oldUn = Join-Path $root 'Uninstall.ps1'
+        if ("$u" -like "*$oldUn*") {
+            $un = "$u".Replace($oldUn, (Join-Path $new 'Uninstall.ps1'))
+            Set-ItemProperty -Path $key -Name UninstallString -Value $un -ErrorAction Stop
+            Set-ItemProperty -Path $key -Name QuietUninstallString -Value "$un -Quiet" -ErrorAction SilentlyContinue
+        }
+    } catch { }
+
+    if (-not $ok) { return $false }
+    if ($restart) { $null = Restart-CgGuard }
+    foreach ($f in $stale) {
+        if (-not (Test-Path -LiteralPath (Join-Path $new $f))) { continue }   # нет замены — не трогаем
+        try { Remove-Item -LiteralPath (Join-Path $root $f) -Force -ErrorAction Stop } catch { }
+    }
+    try { if (Test-Path -LiteralPath $oldCmd) { Remove-Item -LiteralPath $oldCmd -Force -ErrorAction Stop } } catch { }
+    Write-CgLog 'INFO' ("Сценарии переехали в scripts\: задачи перенаправлены, убраны из корня: " + (@($stale) -join ', '))
+    return $true
 }
 
 # ------------------------------------------------------------

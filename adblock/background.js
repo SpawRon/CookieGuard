@@ -6,19 +6,26 @@
 // ни права webRequest, ни доступа к адресам. Строка connect-src 'self'
 // в manifest.json запрещает этому коду ходить в сеть вообще.
 //
-// Здесь только три вещи:
+// Здесь только четыре вещи:
 //   — правила пользователя (свои домены и сайты-исключения);
-//   — CSS для скрытия рекламных блоков на конкретном сайте;
-//   — значок со счётчиком заблокированного.
+//   — CSS для скрытия рекламных блоков на конкретном сайте и общие
+//     правила скрытия под классы и id, которые есть на странице;
+//   — значок со счётчиком заблокированного;
+//   — самообновление: программа CookieGuard кладёт новый код и
+//     свежие списки в папку расширения, а расширение замечает это
+//     и перезагружается само.
 
 const CUSTOM_RULE_ID = 1;
 const ALLOW_RULE_BASE = 1000;
 
 let cosmetic = null;   // { домен: [селекторы] } — встроенные и из списков
+let generic = null;    // { cls: {класс: [сел.]}, ids: {id: [сел.]}, exc: {домен: [сел.]}, off: [домены] }
 
 async function loadJson(path) {
   try {
-    const r = await fetch(chrome.runtime.getURL(path));
+    // no-store: распакованное расширение читает файлы прямо с диска,
+    // и свежую отметку сборки нельзя брать из кэша
+    const r = await fetch(chrome.runtime.getURL(path), { cache: 'no-store' });
     if (!r.ok) return null;
     return await r.json();
   } catch (e) { return null; }
@@ -36,6 +43,27 @@ async function getCosmetic() {
   }
   cosmetic = merged;
   return cosmetic;
+}
+
+async function getGeneric() {
+  if (generic) return generic;
+  const g = await loadJson('data/lists-generic.json') || {};
+  generic = {
+    cls: g.cls || {}, ids: g.ids || {}, exc: g.exc || {},
+    off: new Set(Array.isArray(g.off) ? g.off : [])
+  };
+  return generic;
+}
+
+// Селекторы, которые список отменил на этом сайте (#@#)
+function exceptionsFor(host, exc) {
+  const out = new Set();
+  const parts = host.split('.');
+  for (let i = 0; i < parts.length - 1; i++) {
+    const list = exc[parts.slice(i).join('.')];
+    if (list) for (const x of list) out.add(x);
+  }
+  return out;
 }
 
 function cleanDomain(s) {
@@ -92,6 +120,8 @@ async function pageInfo(host, topHost) {
     const dom = parts.slice(i).join('.');
     if (c[dom]) sels.push(...c[dom]);
   }
+  const g = await getGeneric();
+  const exc = exceptionsFor(host, g.exc);
   for (const line of s.customCss) {
     const t = String(line || '').trim();
     if (!t || t.startsWith('!')) continue;
@@ -103,8 +133,24 @@ async function pageInfo(host, topHost) {
     if (!doms.length || doms.some(d => hostMatches(host, d))) sels.push(sel);
   }
   // По одному правилу на селектор: ошибка в одном не выключает остальные
-  const css = [...new Set(sels)].map(x => x + '{display:none!important}').join('\n');
-  return { off: false, css, yt: s.ytEnabled && (hostMatches(host, 'youtube.com')) };
+  const css = [...new Set(sels)].filter(x => !exc.has(x)).map(x => x + '{display:none!important}').join('\n');
+  const gen = ![...g.off].some(d => hostMatches(host, d) || hostMatches(topHost, d));
+  return { off: false, css, gen, yt: s.ytEnabled && (hostMatches(host, 'youtube.com')) };
+}
+
+// Общие правила под классы и id, которые страница нашла у себя
+async function genericFor(host, cls, ids) {
+  const g = await getGeneric();
+  host = String(host || '').toLowerCase();
+  const exc = exceptionsFor(host, g.exc);
+  const out = new Set();
+  for (const c of (Array.isArray(cls) ? cls : []).slice(0, 4000)) {
+    const l = g.cls[c]; if (l) for (const x of l) if (!exc.has(x)) out.add(x);
+  }
+  for (const i of (Array.isArray(ids) ? ids : []).slice(0, 4000)) {
+    const l = g.ids[i]; if (l) for (const x of l) if (!exc.has(x)) out.add(x);
+  }
+  return [...out].map(x => x + '{display:none!important}').join('\n');
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
@@ -113,7 +159,11 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     pageInfo(msg.host, msg.top).then(reply, () => reply(null));
     return true;
   }
-  if (msg.t === 'reload-cosmetic') { cosmetic = null; reply(true); return false; }
+  if (msg.t === 'gen') {
+    genericFor(msg.host, msg.c, msg.i).then(reply, () => reply(''));
+    return true;
+  }
+  if (msg.t === 'reload-cosmetic') { cosmetic = null; generic = null; reply(true); return false; }
   return false;
 });
 
@@ -122,11 +172,39 @@ chrome.storage.onChanged.addListener((ch, area) => {
   if (ch.customDomains || ch.allow) applyDynamicRules();
 });
 
+// ---- Самообновление ----
+// data/build.json пишет программа CookieGuard каждый раз, когда меняет
+// код расширения или списки. Расширение запоминает отметку, с которой
+// загрузилось, и раз в минуту сверяет её с той, что на диске.
+async function diskStamp() {
+  const b = await loadJson('data/build.json');
+  return (b && b.stamp) || '';
+}
+
+async function rememberStamp() {
+  await chrome.storage.local.set({ loadedStamp: await diskStamp() });
+}
+
+async function checkForUpdate() {
+  const now = await diskStamp();
+  if (!now) return;
+  const { loadedStamp = '' } = await chrome.storage.local.get('loadedStamp');
+  if (now === loadedStamp) return;
+  await chrome.storage.local.set({ loadedStamp: now });
+  chrome.runtime.reload();
+}
+
 async function init() {
   try { await chrome.declarativeNetRequest.setExtensionActionOptions({ displayActionCountAsBadgeText: true }); } catch (e) { }
   try { await chrome.action.setBadgeBackgroundColor({ color: '#3B9EFF' }); } catch (e) { }
   await applyDynamicRules();
+  await rememberStamp();
+  try { await chrome.alarms.create('cg-update', { periodInMinutes: 1 }); } catch (e) { }
 }
 
 chrome.runtime.onInstalled.addListener(init);
 chrome.runtime.onStartup.addListener(init);
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'cg-update') checkForUpdate(); });
+// Будильник мог не пережить перезагрузку расширения — заводим при
+// каждом пробуждении фоновой части, если его нет.
+chrome.alarms.get('cg-update', (a) => { if (!a) chrome.alarms.create('cg-update', { periodInMinutes: 1 }); });

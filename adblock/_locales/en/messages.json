@@ -84,7 +84,7 @@
     "message": "Built-in rules only: about a hundred ad networks and major sites. To add EasyList and RuAdList, press \"Update lists\" in CookieGuard → Protection → Ad blocker."
   },
   "optListsHint": {
-    "message": "CookieGuard downloads the lists and converts them into rules on this computer; only addresses and CSS selectors are taken from them, never code."
+    "message": "CookieGuard downloads the lists and converts them into rules on this computer; only addresses and CSS selectors are taken from them, never code. Which lists to use (EasyList, EasyPrivacy, AdGuard, Fanboy, your own URL) is chosen in CookieGuard: Ad blocker → ⋯ → Choose filter lists. After an update the extension reloads itself within a minute."
   },
   "optYt": {
     "message": "Ads in YouTube videos"
@@ -129,7 +129,7 @@
     "message": "Save"
   },
   "optReload": {
-    "message": "Reload lists"
+    "message": "Reload now"
   },
   "optSaved": {
     "message": "Saved"

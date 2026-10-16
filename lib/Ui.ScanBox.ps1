@@ -41,7 +41,7 @@ $ErrorActionPreference = 'SilentlyContinue'
 #  по-старому и открываем ровно три сообщения, нужных для этого.
 # ------------------------------------------------------------
 if (-not ('Cg.DropTarget' -as [type])) {
-    Add-Type -ReferencedAssemblies PresentationFramework, PresentationCore, WindowsBase, System.Xaml -TypeDefinition @'
+    try { Add-CgType 'Cg.DropTarget' -Refs PresentationFramework, PresentationCore, WindowsBase, System.Xaml -Source @'
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
@@ -83,7 +83,7 @@ namespace Cg {
         }
     }
 }
-'@ -ErrorAction SilentlyContinue
+'@ } catch { }
 }
 
 # ------------------------------------------------------------

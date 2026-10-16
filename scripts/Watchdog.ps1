@@ -7,13 +7,13 @@
 # ============================================================
 
 $ErrorActionPreference = 'SilentlyContinue'
-. (Join-Path $PSScriptRoot 'lib\Core.ps1')
-. (Join-Path $PSScriptRoot 'lib\Protect.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Core.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Protect.ps1')
 
 if (Test-CgGuardAlive) {
     # Сторож жив, но агенты молчат — значит, его цикл застрял или
     # кто-то его душит. Перекличку сверяет отдельный процесс.
-    . (Join-Path $PSScriptRoot 'lib\Agents.ps1')
+    . (Join-Path (Split-Path -Parent $PSScriptRoot) 'lib\Agents.ps1')
     $r = Get-CgAgentsReport
     $silent = @($r.Agents | Where-Object { $_.Silent })
     if ($r.At -and (-not $r.Fresh -or $silent.Count)) {

@@ -306,7 +306,10 @@ $script:CgCertProfiles = @(
 # сузить назначение сертификата, не удаляя его, — ровно то, что
 # делает «Свойства → Включить только следующие назначения» в certmgr.
 if (-not ('Cg.CertProp' -as [type])) {
-    Add-Type -Namespace 'Cg' -Name 'CertProp' -MemberDefinition @'
+    try { Add-CgType 'Cg.CertProp' @'
+using System;
+using System.Runtime.InteropServices;
+namespace Cg { public class CertProp {
 [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
 public struct BLOB { public int cbData; public System.IntPtr pbData; }
 [System.Runtime.InteropServices.DllImport("crypt32.dll", SetLastError = true)]
@@ -331,7 +334,8 @@ public static bool Set(System.IntPtr ctx, int propId, byte[] value) {
         return CertSetCertificateContextProperty(ctx, propId, 0, ref bl);
     } finally { System.Runtime.InteropServices.Marshal.FreeHGlobal(p); }
 }
-'@ -ErrorAction SilentlyContinue
+} }
+'@ } catch { }
 }
 
 # Назначения сертификата словами и ответ на главный вопрос:

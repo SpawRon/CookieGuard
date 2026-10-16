@@ -12,7 +12,7 @@
 param([switch]$RemoveData, [switch]$Quiet)
 
 $ErrorActionPreference = 'SilentlyContinue'
-$here = $PSScriptRoot
+$here = Split-Path -Parent $PSScriptRoot
 . (Join-Path $here 'lib\Core.ps1')
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 
@@ -26,14 +26,14 @@ Write-CgHead 'Удаление CookieGuard'
 # ---- 1. снять постоянную защиту ----
 # Сначала автозащита: иначе сторож включил бы обратно то, что
 # снимается дальше. Она же снимает аудит hosts и журнал запусков.
-$up = Join-Path $here 'Uninstall-Protect.ps1'
+$up = Join-Path $PSScriptRoot 'Uninstall-Protect.ps1'
 if (Test-Path -LiteralPath $up) { & $up | Out-Null }
-$ug = Join-Path $here 'Uninstall-Guard.ps1'
+$ug = Join-Path $PSScriptRoot 'Uninstall-Guard.ps1'
 if (Test-Path -LiteralPath $ug) { & $ug | Out-Null }
 Write-CgItem 'OK' 'Постоянная защита снята'
 
 # ---- 2. вернуть системные настройки, которые мы меняли ----
-$ua = Join-Path $here 'Uninstall-Audit.ps1'
+$ua = Join-Path $PSScriptRoot 'Uninstall-Audit.ps1'
 if (Test-Path -LiteralPath $ua) { & $ua | Out-Null }
 Write-CgItem 'OK' 'Аудит доступа к файлам выключен'
 
