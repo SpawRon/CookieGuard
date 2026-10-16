@@ -455,6 +455,23 @@ function Get-CgCertFindings {
 # ------------------------------------------------------------
 # 3. Автозапуск
 # ------------------------------------------------------------
+
+# Задача планировщика — наш сторож или его страховка? Возвращает
+# описание, если команда в точности та, что ставит Protect.ps1.
+function Test-CgOwnTaskCommand {
+    param([string]$Kind, [string]$Name, [string]$Command)
+    if ($Kind -ne 'Задача') { return '' }
+    $what = @{ '\CookieGuard Watcher' = 'Guard-Service.ps1'; '\CookieGuard Watchdog' = 'Watchdog.ps1' }
+    if (-not $what.ContainsKey($Name)) { return '' }
+    $ps = Join-Path $env:windir 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $file = Join-Path (Get-CgRoot) ('scripts\' + $what[$Name])
+    if (-not (Test-Path -LiteralPath $file)) { return '' }
+    $re = '^"?' + [regex]::Escape($ps) + '"? -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + [regex]::Escape($file) + '"( -AutoNeutralize)?$'
+    if ($Command.Trim() -notmatch $re) { return '' }
+    if ($what[$Name] -eq 'Watchdog.ps1') { return 'наблюдатель, раз в минуту проверяет, что защита на месте' }
+    return 'сторож, следит за файлами cookie'
+}
+
 function Get-CgAutorunList {
     # ArrayList, а не массив: вложенная функция может дописывать только в объект,
     # присваивание $list += создало бы у неё собственную копию
@@ -512,6 +529,16 @@ function Get-CgAutorunList {
             # перехвата: кто положит туда файл, тот и получит автозапуск.
             # Молчать о ней нельзя, но и пугать как вредоносом не за что.
             if ($sev -eq 'INFO') { $sev = 'WARN' }
+        }
+
+        # Наши собственные сторож и наблюдатель: powershell, скрытое окно,
+        # Bypass — ровно то, за что выше ставится CRIT. Узнаём их не по
+        # имени задачи (его подделать проще всего), а по команде целиком:
+        # powershell из System32 запускает скрипт из ЭТОЙ установки.
+        $own = Test-CgOwnTaskCommand $Kind $Name $Command
+        if ($own) {
+            $sev = 'INFO'
+            $notes = @("это сам CookieGuard: $own")
         }
 
         $sigTxt = 'нет данных'
@@ -1171,6 +1198,23 @@ function Get-CgCmdLineForPid {
     return ''
 }
 
+# Антивирусы и индексатор, которым по работе положено открывать файлы
+# браузера. Signer — кусок имени издателя в подписи файла.
+$script:CgAvReaders = @{
+    'msmpeng.exe'               = @{ Signer = 'Microsoft'; Who = 'антивирус Windows Defender' }
+    'mpdefendercoreservice.exe' = @{ Signer = 'Microsoft'; Who = 'антивирус Windows Defender' }
+    'searchindexer.exe'         = @{ Signer = 'Microsoft'; Who = 'индексатор поиска Windows' }
+    'searchprotocolhost.exe'    = @{ Signer = 'Microsoft'; Who = 'индексатор поиска Windows' }
+    'ekrn.exe'                  = @{ Signer = 'ESET';      Who = 'антивирус ESET' }
+    'egui.exe'                  = @{ Signer = 'ESET';      Who = 'антивирус ESET' }
+    'avp.exe'                   = @{ Signer = 'Kaspersky'; Who = 'антивирус Касперского' }
+    'avastsvc.exe'              = @{ Signer = 'Avast';     Who = 'антивирус Avast' }
+    'avgsvc.exe'                = @{ Signer = 'AVG';       Who = 'антивирус AVG' }
+    'mbamservice.exe'           = @{ Signer = 'Malwarebytes'; Who = 'Malwarebytes' }
+    'vsserv.exe'                = @{ Signer = 'Bitdefender';  Who = 'антивирус Bitdefender' }
+    'bdservicehost.exe'         = @{ Signer = 'Bitdefender';  Who = 'антивирус Bitdefender' }
+}
+
 function Get-CgAuditHistoryFindings {
     param([int]$Days = 7)
     $f = @()
@@ -1261,13 +1305,24 @@ function Get-CgAuditHistoryFindings {
             continue
         }
 
+        # Антивирус проверяет каждый изменившийся файл, и Local State с
+        # базой cookie тоже. Верим только паре «имя + подпись издателя»:
+        # одно имя ekrn.exe вредонос может взять себе, подпись ESET — нет.
+        $av = $script:CgAvReaders[$leaf.ToLowerInvariant()]
+        if ($av -and $sg.Valid -and $sg.Signer -like "*$($av.Signer)*") {
+            $f += New-CgFinding 'OK' 'Аудит' ('{0} — {1}, обращений: {2} ({3} проверяет файл)' -f $leaf, $g.Kind, $g.Count, $av.Who) (
+                $detail + "`n`nЭто $($av.Who): он проверяет файлы на вирусы, в том числе файлы браузера. Подпись настоящая — опасности нет."
+            ) $g.Proc
+            continue
+        }
+
         if ($onlyPerms) {
             # Права меняет тот, кто ставит аудит. В том числе мы сами.
             $hint = "`n`nСмена прав доступа — это НЕ чтение ваших cookie. Так выглядит установка аудита."
             if ($leaf -match '^(powershell|pwsh)\.exe$') {
                 $hint += "`nСкорее всего, это сам CookieGuard, когда вы нажали «Включить аудит»."
             }
-            $f += New-CgFinding 'NOTE' 'Аудит' ('{0} менял права доступа к файлам cookie ({1} раз)' -f $leaf, $g.Count) ($detail + $hint) $g.Proc
+            $f += New-CgFinding 'NOTE' 'Аудит' ('{0} менял права доступа к файлам cookie (обращений: {1})' -f $leaf, $g.Count) ($detail + $hint) $g.Proc
             continue
         }
 
@@ -1276,7 +1331,7 @@ function Get-CgAuditHistoryFindings {
             continue
         }
 
-        $f += New-CgFinding 'CRIT' 'Аудит' ('{0} ЧИТАЛ содержимое базы cookie ({1} раз)' -f $leaf, $g.Count) (
+        $f += New-CgFinding 'CRIT' 'Аудит' ('{0} ЧИТАЛ содержимое базы cookie (обращений: {1})' -f $leaf, $g.Count) (
             $detail + "`n`nУ обычной программы нет причин читать содержимое базы cookie браузера."
         ) $g.Proc (Get-CgHash $g.Proc) $leaf
     }

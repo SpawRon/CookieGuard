@@ -772,6 +772,8 @@ Windows штатно отключает Defender, когда работает с
 скрытая или закодированная команда	hidden or encoded command
 скрытый запуск интерпретатора	hidden interpreter launch
 запускается со скрытым окном	runs with a hidden window
+это сам CookieGuard: сторож, следит за файлами cookie	this is CookieGuard itself: the guard that watches the cookie files
+это сам CookieGuard: наблюдатель, раз в минуту проверяет, что защита на месте	this is CookieGuard itself: the watchdog that checks every minute that protection is in place
 файл не найден на диске	file not found on disk
 Где прописано: {0}	Registered in: {0}
 Команда: {0}	Command: {0}
@@ -887,11 +889,20 @@ systray.exe — пустышка Windows. Так программы отключ
 {0} — {1}, обращений: {2} (это сам браузер)	{0} — {1}, accesses: {2} (this is the browser itself)
 Смена прав доступа — это НЕ чтение ваших cookie. Так выглядит установка аудита.	A permission change is NOT reading your cookies. This is what setting up auditing looks like.
 Скорее всего, это сам CookieGuard, когда вы нажали «Включить аудит».	Most likely this is CookieGuard itself, when you clicked "Enable auditing".
-{0} менял права доступа к файлам cookie ({1} раз)	{0} changed permissions on cookie files ({1} times)
+{0} менял права доступа к файлам cookie (обращений: {1})	{0} changed permissions on cookie files (accesses: {1})
 {0} — {1}, обращений: {2}	{0} — {1}, accesses: {2}
 Содержимое файла при этом не читалось.	The file contents were not read.
-{0} ЧИТАЛ содержимое базы cookie ({1} раз)	{0} READ the contents of the cookie database ({1} times)
+{0} ЧИТАЛ содержимое базы cookie (обращений: {1})	{0} READ the contents of the cookie database (accesses: {1})
 У обычной программы нет причин читать содержимое базы cookie браузера.	An ordinary program has no reason to read the contents of a browser's cookie database.
+{0} — {1}, обращений: {2} ({3} проверяет файл)	{0} — {1}, accesses: {2} ({3} is scanning the file)
+Это {0}: он проверяет файлы на вирусы, в том числе файлы браузера. Подпись настоящая — опасности нет.	This is {0}: it scans files for viruses, browser files included. The signature is genuine, so there is no danger.
+антивирус Windows Defender	Windows Defender antivirus
+индексатор поиска Windows	Windows Search indexer
+антивирус ESET	ESET antivirus
+антивирус Касперского	Kaspersky antivirus
+антивирус Avast	Avast antivirus
+антивирус AVG	AVG antivirus
+антивирус Bitdefender	Bitdefender antivirus
 # --- Browser hijack ---
 включён отладочный порт — через него можно забрать cookie уже расшифрованными, не трогая файл	debugging port is on — cookies can be taken through it already decrypted, without touching the file
 принудительно загружено расширение из папки, в обход магазина	an extension is force-loaded from a folder, bypassing the store

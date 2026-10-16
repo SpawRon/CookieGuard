@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fewer false alarms
+- **Findings → Audit**: an antivirus or the Windows Search indexer reading `Local State` or the
+  cookie database is no longer CRITICAL. ESET, Defender, Kaspersky, Avast, AVG, Bitdefender and
+  Malwarebytes are recognised by process name *and* a valid signature from that vendor.
+- **Findings → Autorun**: CookieGuard's own `Watcher` and `Watchdog` tasks are no longer CRITICAL.
+  They are recognised by the exact command line pointing at this installation; anything added to it
+  still raises the alarm.
+
 ## 3.1.0 — 2026-10-16
 
 ### Faster
