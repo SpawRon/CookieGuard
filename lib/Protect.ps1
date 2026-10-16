@@ -161,7 +161,8 @@ function Enable-CgFsAudit {
 
 function Get-CgCookieAuditFiles {
     # те же файлы, что ставит Install-Audit.ps1
-    return @(Get-CgTargetFiles | Where-Object { $_.Path -match '\\(Cookies|Login Data|logins\.json|key4\.db|cookies\.sqlite)$' })
+    # Local State — ключ шифрования cookie: без него базу не расшифровать
+    return @(Get-CgTargetFiles | Where-Object { $_.Path -match '\\(Cookies|Login Data|Local State|logins\.json|key4\.db|cookies\.sqlite)$' })
 }
 
 function Test-CgFileAudited {
@@ -265,6 +266,11 @@ function Get-CgProtectParts {
             Name = 'Теневой путь: куда соединяется тот, кто трогал cookie'
             Why  = 'Программа, прочитавшая cookie, и подозрительный процесс 10 минут под наблюдением в сети. Отдельно — любые соединения посторонних программ с Telegram, Discord и файлообменниками, куда воры паролей сливают добычу.'
             Test = { Test-CgGuardCurrent }
+            Heal = $null }
+        [PSCustomObject]@{ Key = 'agents'; Core = $false
+            Name = 'Агенты-усы на связи'
+            Why  = 'Приманка, отладочный порт, ключ шифрования, теневые копии, внедрение в браузер, сеть и hosts. Каждый отмечается раз в свой интервал; наблюдатель сверяет, не замолчал ли кто.'
+            Test = { $r = Get-CgAgentsReport; if (-not $r.At) { $false } else { $r.Fresh -and -not @($r.Agents | Where-Object { $_.Silent }).Count } }
             Heal = $null }
         [PSCustomObject]@{ Key = 'seclog'; Core = $false
             Name = 'Журнал безопасности не меньше 256 МБ'

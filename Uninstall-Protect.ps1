@@ -24,6 +24,10 @@ Write-CgItem 'OK' 'Автозащита больше не включает ча�
 & (Join-Path $PSScriptRoot 'Uninstall-Guard.ps1')
 & (Join-Path $PSScriptRoot 'Uninstall-Audit.ps1')
 
+. (Join-Path $PSScriptRoot 'lib\Monitor.ps1')
+Remove-CgCanary
+Write-CgItem 'OK' 'Приманки убраны из папок браузеров'
+
 if (Set-CgHostsAudit -Remove) { Write-CgItem 'OK' 'Аудит записи в hosts снят' }
 else { Write-CgItem 'NOTE' 'Аудит записи в hosts снять не удалось (или его не было)' }
 

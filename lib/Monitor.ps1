@@ -9,12 +9,19 @@
 $ErrorActionPreference = 'SilentlyContinue'
 
 if (-not (Get-Command ConvertFrom-CgHostsText -ErrorAction SilentlyContinue)) { . (Join-Path $PSScriptRoot 'Hosts.ps1') }
+if (-not (Get-Command Test-CgFileAudited -ErrorAction SilentlyContinue)) { . (Join-Path $PSScriptRoot 'Protect.ps1') }
+. (Join-Path $PSScriptRoot 'Agents.ps1')
 
 function Update-CgMonitorTargets {
     param($State)
     $targets = Get-CgTargetFiles
+    $canary = @{}
+    foreach ($c in (Get-CgCanaryFiles)) { $canary[$c.ToLowerInvariant()] = $true }
     $watchMap = @{}
-    foreach ($t in $targets) { $watchMap[$t.Path.ToLowerInvariant()] = $t }
+    foreach ($t in $targets) {
+        $t | Add-Member -NotePropertyName IsCanary -NotePropertyValue ([bool]$canary[$t.Path.ToLowerInvariant()]) -Force
+        $watchMap[$t.Path.ToLowerInvariant()] = $t
+    }
     $browserExes = @{}
     foreach ($b in (Get-CgBrowsers)) {
         foreach ($e in $b.Exe) { $browserExes[$e.ToLowerInvariant()] = $b.Name }
@@ -74,6 +81,10 @@ function New-CgMonitorState {
         NetLast      = (Get-Date).AddMinutes(-1)
         DnsMap       = @{}
         DnsLast      = (Get-Date).AddMinutes(-1)
+        Agents       = (New-CgAgentsState)
+        AgentsSaved  = [datetime]::MinValue
+        InjectSeen   = @{}
+        ShadowIds    = $null
         LastRecordId = $lastRecordId
         KnownPids    = $knownPids
         Seen         = @{}
@@ -202,6 +213,39 @@ function Resolve-CgAccessEvent {
     if ($accessorPath) { $accessorName = (Split-Path -Leaf $accessorPath).ToLowerInvariant() }
     $procId = 0
     if ($d['ProcessId']) { try { $procId = [Convert]::ToInt32($d['ProcessId'], 16) } catch { } }
+
+    # Приманка: ни один браузер её не открывает. Чтение — значит,
+    # кто-то перебирал профили. Права и свойства — не в счёт (так
+    # её ставит сам CookieGuard), антивирус и индексатор — тоже.
+    if ($target.IsCanary) {
+        if ($procId -eq $PID) { return $null }
+        $kindC = Get-CgAccessKind $d['AccessList'] $d['AccessMask']
+        if ($kindC -notmatch 'чтение содержимого') { return $null }
+        $keyC = "canary|$accessorPath|$objl"
+        if ($State.Seen.ContainsKey($keyC)) { return $null }
+        $State.Seen[$keyC] = $true
+        Set-CgAgentTick $State 'canary' $true ('сработала: ' + (Get-Date -Format 'HH:mm:ss'))
+        if ($State.Tolerated.ContainsKey($accessorName)) {
+            return New-CgEvent 'NOTE' 'Приманка' ("$accessorName ($($State.Tolerated[$accessorName])) проверил приманку") "Файл: $obj`nАнтивирус и индексатор читают все файлы подряд — это не кража." $accessorName $accessorPath $procId
+        }
+        $liveC = Get-CgLiveProc $procId
+        $hashC = Get-CgHash $accessorPath
+        Add-CgSuspect $State $procId $accessorName $accessorPath 'прочитал приманку' 'CRIT'
+        $connC = @(Get-CgProcConnections $procId)
+        $null = Save-CgEvidence 'canary' ([PSCustomObject]@{ Time = (Get-Date).ToString('o'); ObjectName = $obj; AccessorPath = $accessorPath; ProcessId = $procId; Sha256 = $hashC; Process = $liveC })
+        $det = @(
+            "Файл:      $obj",
+            "Программа: $accessorPath",
+            "PID:       $procId",
+            "SHA256:    $hashC",
+            $(if ($liveC -and $liveC.ParentName) { "Запущена из: $($liveC.ParentName)" } else { 'Процесс уже завершился.' }),
+            '',
+            'Это приманка: ненастоящий профиль браузера, которого браузер не видит и не открывает. Его читает только тот, кто перебирает все профили в поисках cookie и паролей, — так работают воры паролей.',
+            'Что делать: завершить программу и отправить в карантин, затем сменить пароли и выйти из всех сеансов в важных аккаунтах.'
+        )
+        if ($connC.Count) { $det += ''; $det += 'Соединения в момент чтения:'; foreach ($c in ($connC | Select-Object -First 8)) { $det += '  ' + (Format-CgConn $State $c) } }
+        return New-CgEvent 'CRIT' 'Приманка' ('ПРИМАНКА ТРОНУТА: {0} перебирает профили браузера' -f $accessorName) ($det -join "`n") $accessorName $accessorPath $procId $hashC $liveC
+    }
 
     # свой браузер читает свои cookie — это норма
     if ($accessorPath -and $State.BrowserExes.ContainsKey($accessorPath.ToLowerInvariant())) {
@@ -442,6 +486,10 @@ function Update-CgDnsMap {
 
 function Get-CgConnHost {
     param($State, [string]$Ip)
+    # Петлевой адрес — это локальный прокси, а не сайт. В кеше DNS к
+    # 127.0.0.1 привязаны имена из hosts (Zapret блокирует так max.ru),
+    # и без этой проверки весь трафик через Karing назывался max.ru.
+    if ($Ip -match '^(127\.|::1$)') { return '' }
     $n = @($State.DnsMap[$Ip])
     if (-not $n.Count) { return '' }
     # имя канала слива важнее случайного CDN-имени
@@ -449,13 +497,17 @@ function Get-CgConnHost {
     return "$($n[0])"
 }
 
+$script:CgListenerCache = @{}
 function Get-CgListener {
     param([int]$Port)
+    if ($script:CgListenerCache.ContainsKey($Port)) { return $script:CgListenerCache[$Port] }
+    $script:CgListenerCache[$Port] = ''
     try {
         $l = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop | Select-Object -First 1
         if ($l) {
             $p = Get-Process -Id ([int]$l.OwningProcess) -ErrorAction Stop
-            return "$($p.ProcessName).exe"
+            $script:CgListenerCache[$Port] = "$($p.ProcessName).exe"
+            return $script:CgListenerCache[$Port]
         }
     } catch { }
     return ''
@@ -736,12 +788,22 @@ function Invoke-CgMonitorPoll {
         # НОВЫХ, номер последнего сдвигается на самый свежий, и всё,
         # что было между, пропадало навсегда — под нагрузкой, то есть
         # как раз тогда, когда кто-то перебирает файлы.
-        $xpath = "*[System[(EventID=4656 or EventID=4663) and (EventRecordID>$($State.LastRecordId))]]"
-        $evts = Get-WinEvent -LogName Security -FilterXPath $xpath -MaxEvents 500 -Oldest -ErrorAction SilentlyContinue
+        # 4688 — запуски программ: по ним агенты видят то, что опрос
+        # процессов не застаёт (esentutl /vss работает долю секунды)
+        $xpath = "*[System[(EventID=4656 or EventID=4663 or EventID=4688) and (EventRecordID>$($State.LastRecordId))]]"
+        $evts = $null
+        try {
+            $evts = Get-WinEvent -LogName Security -FilterXPath $xpath -MaxEvents 500 -Oldest -ErrorAction Stop
+            Set-CgAgentTick $State 'audit' $true
+        } catch {
+            if ("$($_.FullyQualifiedErrorId)" -match 'NoMatchingEventsFound') { Set-CgAgentTick $State 'audit' $true }
+            else { Set-CgAgentTick $State 'audit' $false 'журнал безопасности недоступен' }
+        }
         if ($evts) {
             foreach ($e in @($evts)) {
                 if ([int64]$e.RecordId -gt $State.LastRecordId) { $State.LastRecordId = [int64]$e.RecordId }
-                $r = Resolve-CgAccessEvent $State $e
+                if ($e.Id -eq 4688) { $r = Resolve-CgProcCreateEvent $State $e }
+                else { $r = Resolve-CgAccessEvent $State $e }
                 if ($r) { $null = $out.Add($r) }
             }
         }
@@ -761,9 +823,10 @@ function Invoke-CgMonitorPoll {
         $State.KnownPids = $now
     }
 
-    # hosts и сеть
-    try { foreach ($r in (Invoke-CgHostsPoll $State)) { $null = $out.Add($r) } } catch { }
-    try { foreach ($r in (Invoke-CgNetPoll $State)) { $null = $out.Add($r) } } catch { }
+    # hosts, сеть и остальные агенты
+    try { foreach ($r in (Invoke-CgHostsPoll $State)) { $null = $out.Add($r) }; Set-CgAgentTick $State 'hosts' $true } catch { Set-CgAgentTick $State 'hosts' $false $_.Exception.Message }
+    try { foreach ($r in (Invoke-CgNetPoll $State)) { $null = $out.Add($r) }; Set-CgAgentTick $State 'net' $true } catch { Set-CgAgentTick $State 'net' $false $_.Exception.Message }
+    try { foreach ($r in (Invoke-CgAgentsPoll $State)) { $null = $out.Add($r) } } catch { }
 
     # периодический обход раз в минуту
     if (((Get-Date) - $State.LastSweep).TotalSeconds -ge 60) {
