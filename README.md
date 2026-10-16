@@ -192,10 +192,12 @@ clean device, then run **Scan system** and **Fix all**.
 ## Project layout
 
 ```
-CookieGuard.ps1   main window          scripts\   guard, watchdog, install/uninstall
-CookieGuard.exe   launcher (C#)        lib\       checks, agents, monitor, network, UI
-Setup.cmd         installer            adblock\   browser extension (MV3)
-docs\             manual, images       build\     launcher source, icon generator
+CookieGuard.ps1      main window            scripts\      guard service, watchdog, install / uninstall
+CookieGuard.exe      launcher (C#)          lib\          checks, agents, monitor, network, trust
+Setup.cmd            installer              lib\native\   C# helpers, compiled once and cached
+ui\*.xaml            WPF windows and theme  lib\lang\     interface dictionaries (TSV)
+adblock\             browser extension, MV3 build\        launcher source, icon generator
+docs\                manual and images      .github\      CI, issue templates
 ```
 
 ## License

@@ -20,6 +20,10 @@ function Test-CgAdmin {
 
 function Get-CgRoot { return (Split-Path -Parent $PSScriptRoot) }
 
+# Разметка окон, исходники C# и словари лежат файлами своего формата:
+# ui\*.xaml, lib\native\*.cs, lib\lang\*.tsv. Путь — от корня программы.
+function Read-CgText { param([string]$Rel) [IO.File]::ReadAllText((Join-Path (Get-CgRoot) $Rel), [Text.Encoding]::UTF8) }
+
 # Куда писать рабочие данные: журналы, отчёты, улики, карантин, эталон.
 #
 # Установленная программа лежит в Program Files, куда обычный пользователь

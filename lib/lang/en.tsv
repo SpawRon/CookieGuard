@@ -1,13 +1,7 @@
-﻿# ============================================================
-#  Английский словарь интерфейса (см. lib\Lang.ps1)
-#
-#  Строка: русский текст, табуляция, английский. \n — перевод
-#  строки. {0}, {1} — подставляемые значения: ключ годится и как
-#  строка формата для -f, и как шаблон для готовой строки.
-#  Загружается только в английском режиме.
-# ============================================================
-
-$script:CgLangEnText = @'
+# CookieGuard - English interface dictionary (loaded by lib\Lang.ps1)
+# One line per string: Russian text, TAB, English text. \n is a line break.
+# {0}, {1} are placeholders: a key works both as a -f format string and as a
+# template that matches an already formatted string. Lines starting with # are comments.
 # ---- frag-xaml.txt ----
 # Разметка окон: lib\Ui.MainXaml.ps1, Ui.Dialogs.ps1, Ui.Inspector.ps1, Ui.ScanBox.ps1
 Найти в разделах и находках	Search sections and findings
@@ -2024,4 +2018,3 @@ AppData разложена по полкам	AppData sorted out
 Расширение подхватит их само в течение минуты. Если оно подключено старой версией программы, один раз перезапустите браузер — дальше обновления доходят сами.	The extension picks them up by itself within a minute. If it was installed by an older version of the app, restart the browser once; after that updates arrive on their own.
 Скачать свежие выбранные списки (по умолчанию EasyList, RuAdList, EasyPrivacy, Peter Lowe) и перевести их в правила браузера. Из списков берутся только адреса и CSS-селекторы.	Download fresh copies of the chosen lists (by default EasyList, RuAdList, EasyPrivacy, Peter Lowe) and convert them into browser rules. Only addresses and CSS selectors are taken from the lists.
 {0} из {1} на связи	{0} of {1} checking in
-'@

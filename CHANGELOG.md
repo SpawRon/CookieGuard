@@ -26,6 +26,8 @@
   up to 64 px, PNG at 256 px. The tray loads the 16 px frame instead of shrinking the 32 px one.
 
 ### Repository
+- Window markup moved to `ui\*.xaml`, C# helpers to `lib\native\*.cs`, and the English dictionary to
+  `lib\lang\en.tsv`. Each now lives in its own format instead of inside PowerShell strings.
 - Scripts moved to `scripts\`, and `УСТАНОВИТЬ.cmd` renamed to `Setup.cmd`. Installed copies migrate
   on their own: on first start the app points both scheduled tasks and the uninstall entry at
   `scripts\` and removes the old root copies.
