@@ -121,8 +121,13 @@ function Test-CgGuardCurrent {
 function Restart-CgGuard {
     if (-not (Test-CgTask $script:CgTaskGuard)) { return $false }
     try { Stop-ScheduledTask -TaskName $script:CgTaskGuard -ErrorAction SilentlyContinue } catch { }
+    # Только сторож этой установки и только если он не завершился сам:
+    # прежде гасились все powershell с «Guard-Service.ps1» в строке,
+    # включая чужие копии и проверочные запуски.
+    $mine = [regex]::Escape((Join-Path (Get-CgRoot) 'Guard-Service.ps1'))
     foreach ($p in (Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue)) {
-        if ("$($p.CommandLine)" -match 'Guard-Service\.ps1') { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch { } }
+        if ($p.ProcessId -eq $PID) { continue }
+        if ("$($p.CommandLine)" -match "(?i)$mine") { try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch { } }
     }
     Start-Sleep -Milliseconds 600
     try { Start-ScheduledTask -TaskName $script:CgTaskGuard -ErrorAction Stop; return $true } catch { return $false }
@@ -179,6 +184,20 @@ function Test-CgFileAudited {
 
 # Сколько баз cookie и паролей под аудитом. Браузер, пересоздавший
 # файл, и новый профиль приходят без правила — их и надо найти.
+# Из пропусков аудита — те файлы, что уже были под аудитом. Только их
+# потеря значит «кто-то снял». Новый профиль, пересозданный браузером
+# файл, Local State и приманки, добавленные обновлением, — это не
+# выключение, а первое включение. Путать одно с другим нельзя: так
+# появилась ложная тревога «было выключено и включено обратно».
+function Get-CgCookieAuditLost {
+    param([string[]]$Missing)
+    $f = Join-Path (Get-CgDir 'state') 'audited-files.txt'
+    if (-not (Test-Path -LiteralPath $f)) { return @() }
+    $had = @{}
+    foreach ($l in (Get-Content -LiteralPath $f -Encoding UTF8)) { if ($l) { $had[$l.ToLowerInvariant()] = $true } }
+    return @($Missing | Where-Object { $had.ContainsKey("$_".ToLowerInvariant()) })
+}
+
 function Get-CgCookieAuditGaps {
     $all = Get-CgCookieAuditFiles
     $gaps = @(); $unknown = $false

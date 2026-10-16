@@ -116,14 +116,37 @@ function Get-CgSettings {
     return [PSCustomObject]$s
 }
 
+# Записать файл состояния целиком или никак.
+#
+# Сначала временный файл, потом замена. [IO.File]::Replace в папке
+# ProgramData отказывал второму и всем следующим вызовам: первый
+# agents.json создавался, а дальше обновлялся только .tmp. Перекличка
+# агентов застывала, наблюдатель решал, что агенты молчат, и раз в
+# минуту перезапускал сторожа. Теперь: замена, а если Windows отказала —
+# перенос поверх, а если и он — прямая запись. И с повтором: файл
+# может на миг держать открытым окно, которое его читает.
+function Write-CgFileAtomic {
+    param([string]$Path, [string]$Text)
+    $tmp = "$Path.tmp"
+    $enc = New-Object Text.UTF8Encoding $false
+    for ($i = 0; $i -lt 5; $i++) {
+        try {
+            [IO.File]::WriteAllText($tmp, $Text, $enc)
+            if (-not (Test-Path -LiteralPath $Path)) { [IO.File]::Move($tmp, $Path); return $true }
+            try { [IO.File]::Replace($tmp, $Path, $null); return $true } catch { }
+            try { [IO.File]::Copy($tmp, $Path, $true); [IO.File]::Delete($tmp); return $true } catch { }
+            [IO.File]::WriteAllText($Path, $Text, $enc)
+            try { [IO.File]::Delete($tmp) } catch { }
+            return $true
+        } catch { Start-Sleep -Milliseconds (40 * ($i + 1)) }
+    }
+    return $false
+}
+
 function Save-CgSettings {
     param($Settings)
-    $p = Get-CgSettingsPath
-    $tmp = "$p.tmp"
     $json = ([PSCustomObject]$Settings) | ConvertTo-Json -Depth 4
-    [IO.File]::WriteAllText($tmp, $json, (New-Object Text.UTF8Encoding $false))
-    if (Test-Path -LiteralPath $p) { [IO.File]::Replace($tmp, $p, $null) }
-    else { [IO.File]::Move($tmp, $p) }
+    if (-not (Write-CgFileAtomic (Get-CgSettingsPath) $json)) { throw 'Не удалось записать настройки' }
 }
 
 function Set-CgSetting {

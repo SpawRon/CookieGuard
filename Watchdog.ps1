@@ -17,9 +17,21 @@ if (Test-CgGuardAlive) {
     $r = Get-CgAgentsReport
     $silent = @($r.Agents | Where-Object { $_.Silent })
     if ($r.At -and (-not $r.Fresh -or $silent.Count)) {
-        $who = $(if ($silent.Count) { ($silent | ForEach-Object { $_.Name }) -join ', ' } else { 'все' })
-        Write-CgLog 'CRIT' "Наблюдатель: агенты молчат ($who) — перезапускаю сторожа"
-        $null = Restart-CgGuard
+        # Сторож моложе пяти минут — ему дают отметиться. Перезапуск не
+        # чаще раза в 15 минут: перезапуск по кругу ничего не чинит, а
+        # тревог насыпает (так и было, пока перекличка не записывалась).
+        $g = Get-CgGuardInfo
+        $mark = Join-Path (Get-CgDir 'state') 'watchdog-restart.txt'
+        $lastR = [datetime]::MinValue
+        try { $lastR = [datetime]::Parse([IO.File]::ReadAllText($mark)) } catch { }
+        $young = $false
+        try { $young = ((Get-Date) - (Get-Process -Id $g.ProcId -ErrorAction Stop).StartTime).TotalMinutes -lt 5 } catch { }
+        if (-not $young -and ((Get-Date) - $lastR).TotalMinutes -ge 15) {
+            $who = $(if ($silent.Count) { ($silent | ForEach-Object { $_.Name }) -join ', ' } else { 'все' })
+            Write-CgLog 'CRIT' "Наблюдатель: агенты молчат ($who) — перезапускаю сторожа"
+            try { [IO.File]::WriteAllText($mark, (Get-Date).ToString('o')) } catch { }
+            $null = Restart-CgGuard
+        }
     }
     return
 }

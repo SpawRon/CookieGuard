@@ -86,7 +86,14 @@ $script:FirstWatch = $true
 function Watch-Defenses {
     $s = Get-CgSettings
     if ($s.AutoProtect) {
+        # Какие базы потеряли аудит, а какие просто новые — до починки
+        $lostSacl = @()
+        try { $g0 = Get-CgCookieAuditGaps; if ($g0.Missing.Count) { $lostSacl = @(Get-CgCookieAuditLost $g0.Missing) } } catch { }
         foreach ($f in (Repair-CgProtection)) {
+            if ($f.Key -eq 'sacl' -and $f.Ok -and -not $lostSacl.Count) {
+                Write-CgLog 'INFO' 'Под аудит взяты новые файлы браузеров (новый профиль, ключ шифрования или приманка)'
+                continue
+            }
             if ($f.Ok) {
                 # Первая проверка после запуска — это включение, а не
                 # «кто-то выключил»: так бывает после обновления, когда
@@ -94,6 +101,7 @@ function Watch-Defenses {
                 $alarm = ($f.Was -eq $false -and -not $script:FirstWatch)
                 $lvl = $(if ($alarm) { 'CRIT' } else { 'INFO' })
                 $msg = $(if ($alarm) { "Было выключено и включено обратно: $($f.Name)" } else { "Включено: $($f.Name)" })
+                if ($alarm -and $f.Key -eq 'sacl') { $msg += ' (аудит сняли с: ' + (($lostSacl | Select-Object -First 3) -join ', ') + ')' }
                 Write-CgLog $lvl $msg
                 Write-CgEventRecord (New-CgEvent $(if ($lvl -eq 'CRIT') { 'WARN' } else { 'INFO' }) 'Защита' $msg 'Автозащита сама вернула эту часть. Если её выключали не вы — это повод разобраться: вредоносы первым делом гасят наблюдение.') 'guard'
                 if ($alarm) { Show-CgToast 'CookieGuard' $msg 'CRIT' }

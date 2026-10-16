@@ -194,11 +194,7 @@ function Get-CgHostsSnapshot {
 function Save-CgHostsSnapshot {
     param([string]$Text)
     try {
-        $p = Get-CgHostsSnapshotPath
-        $tmp = "$p.tmp"
-        [IO.File]::WriteAllText($tmp, "$Text", (New-Object Text.UTF8Encoding $false))
-        if (Test-Path -LiteralPath $p) { [IO.File]::Replace($tmp, $p, $null) } else { [IO.File]::Move($tmp, $p) }
-        return $true
+        return (Write-CgFileAtomic (Get-CgHostsSnapshotPath) "$Text")
     } catch { return $false }
 }
 

@@ -1679,6 +1679,9 @@ $ui.BtnExtStore.Add_Click({
 # ------------------------------------------------------------
 function Invoke-AuditScript {
     param([string]$ScriptName, [string]$What, [string[]]$Extra = @())
+    # Пустой элемент уходил в сценарий как позиционный параметр $null:
+    # «Не удаётся найти позиционный параметр, принимающий аргумент $null»
+    $Extra = @($Extra | Where-Object { $_ })
 
     $sp = Join-Path $PSScriptRoot $ScriptName
     if (-not (Test-Path -LiteralPath $sp)) {
@@ -2755,7 +2758,9 @@ $ui.ScaleState.Text = (T 'сейчас')
 
 $ui.BtnAutoFix.Add_Click({
     Set-Busy $true 'Чиню автозащиту...'
-    $null = Invoke-AuditScript 'Install-Protect.ps1' 'Починка автозащиты' $(if ((Get-CgSettings).AutoNeutralize) { @('-AutoNeutralize') } else { @() })
+    $fixExtra = @()
+    if ((Get-CgSettings).AutoNeutralize) { $fixExtra = @('-AutoNeutralize') }
+    $null = Invoke-AuditScript 'Install-Protect.ps1' 'Починка автозащиты' $fixExtra
     Set-Busy $false
     Sync-CgToggles
     Update-GuardStats

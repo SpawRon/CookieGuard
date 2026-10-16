@@ -70,11 +70,7 @@ function Save-CgAgentsState {
         $o.agents[$a.Key] = [ordered]@{ name = $a.Name; every = $a.Every; ok = $a.Ok; note = $a.Note
                                          last = $(if ($a.Last -gt [datetime]::MinValue) { $a.Last.ToString('o') } else { '' }) }
     }
-    try {
-        $p = Get-CgAgentsPath
-        [IO.File]::WriteAllText("$p.tmp", (ConvertTo-Json -InputObject $o -Depth 4), (New-Object Text.UTF8Encoding $false))
-        if (Test-Path -LiteralPath $p) { [IO.File]::Replace("$p.tmp", $p, $null) } else { [IO.File]::Move("$p.tmp", $p) }
-    } catch { }
+    $null = Write-CgFileAtomic (Get-CgAgentsPath) (ConvertTo-Json -InputObject $o -Depth 4)
 }
 
 # Для окна и наблюдателя: кто на связи, кто молчит
