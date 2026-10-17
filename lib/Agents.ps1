@@ -177,6 +177,56 @@ function Remove-CgCanary {
 $script:CgCredFileRx = '(?i)\\(Login Data|Cookies|Web Data|Local State|key4\.db|logins\.json|cookies\.sqlite)(["\s]|$)'
 $script:CgBrowserImgRx = '(?i)\\(chrome|msedge|brave|vivaldi|opera|browser|firefox)\.exe$'
 
+# Чей профиль у браузера с отладочным портом. Отладочный порт на
+# пустом профиле безвреден: забирать оттуда нечего. Так работают
+# автотесты, Playwright и рендер страниц в картинки. Опасен порт на
+# вашем профиле — или на его КОПИИ: вор копирует User Data во
+# временную папку и уже там просит браузер отдать cookie.
+# Копию выдают файлы с данными (Cookies, Login Data, Local State):
+#  - время записи раньше времени создания — так ложится скопированный
+#    файл, он уносит с собой время записи оригинала;
+#  - файл появился раньше запуска браузера — свежий профиль браузер
+#    создаёт сам, уже после старта.
+# Содержимое файлов не читаем, только время и размер.
+function Get-CgDebugProfile {
+    param([string]$Cmd, [datetime]$Launched = (Get-Date))
+    $udd = ''
+    if ($Cmd -match '(?i)--user-data-dir[= ]"([^"]+)"') { $udd = $matches[1].TrimEnd('\') }
+    elseif ($Cmd -match '(?i)--user-data-dir[= ]([^"]+?)(\s--|$)') { $udd = $matches[1].TrimEnd('\') }
+    if ((-not $udd) -or ($udd -match '(?i)\\User Data$|\\Firefox\\Profiles')) {
+        return [PSCustomObject]@{ Kind = 'real'; Sev = 'CRIT'; Udd = $udd
+            Title = 'БРАУЗЕР ЗАПУЩЕН С ОТЛАДОЧНЫМ ПОРТОМ НА ВАШЕМ ПРОФИЛЕ: {0}'; Why = '' }
+    }
+    if (-not (Test-Path -LiteralPath $udd)) {
+        return [PSCustomObject]@{ Kind = 'gone'; Sev = 'WARN'; Udd = $udd
+            Title = 'Браузер запущен с отладочным портом: {0}'
+            Why = "Профиль отдельный ($udd), но папки уже нет — проверить, что в нём было, нельзя. Если это не вы — разберитесь." }
+    }
+    $copied = @(); $before = @()
+    $files = @(Get-ChildItem -LiteralPath $udd -Recurse -File -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -in @('Cookies', 'Login Data', 'Web Data', 'Local State') })
+    foreach ($f in $files) {
+        $rel = $f.FullName.Substring($udd.Length).TrimStart('\')
+        if ($f.LastWriteTime -lt $f.CreationTime.AddSeconds(-2)) { $copied += "$rel — изменён $($f.LastWriteTime.ToString('dd.MM HH:mm')), а создан $($f.CreationTime.ToString('dd.MM HH:mm:ss'))" }
+        elseif ($f.CreationTime -lt $Launched.AddSeconds(-2)) { $before += "$rel — лежал до запуска, создан $($f.CreationTime.ToString('dd.MM HH:mm:ss'))" }
+    }
+    if ($copied.Count) {
+        return [PSCustomObject]@{ Kind = 'copied'; Sev = 'CRIT'; Udd = $udd
+            Title = 'БРАУЗЕР С ОТЛАДОЧНЫМ ПОРТОМ НА КОПИИ ПРОФИЛЯ: {0}'
+            Why = "Профиль $udd похож на копию настоящего: файлы с данными скопированы, а не созданы браузером.`n" + (($copied | Select-Object -First 5 | ForEach-Object { '  ' + $_ }) -join "`n") +
+                  "`nТак крадут cookie в обход шифрования: копируют профиль и просят браузер расшифровать его через порт." }
+    }
+    if ($before.Count) {
+        return [PSCustomObject]@{ Kind = 'used'; Sev = 'WARN'; Udd = $udd
+            Title = 'Браузер запущен с отладочным портом: {0}'
+            Why = "Профиль отдельный ($udd), в нём уже есть данные с прошлых запусков:`n" + (($before | Select-Object -First 5 | ForEach-Object { '  ' + $_ }) -join "`n") +
+                  "`nТак работают автотесты с постоянным профилем. Если это не вы — разберитесь." }
+    }
+    return [PSCustomObject]@{ Kind = 'fresh'; Sev = 'NOTE'; Udd = $udd
+        Title = 'Браузер с отладочным портом на пустом профиле: {0}'
+        Why = "Профиль новый и пустой ($udd): браузер создал его сам при запуске, ваших cookie и паролей там нет. Так работают автотесты, Playwright и рендер страниц в картинки." }
+}
+
 function Resolve-CgProcCreateEvent {
     param($State, $Ev)
     $d = Get-CgEvData $Ev
@@ -193,14 +243,16 @@ function Resolve-CgProcCreateEvent {
 
     # отладочный порт браузера: обход шифрования cookie без чтения файла
     if ($img -match $script:CgBrowserImgRx -and $cmd -match '(?i)--remote-debugging-(port|pipe)') {
+        # Дочерние процессы (--type=renderer, gpu-process...) повторяют
+        # ключи родителя, и у каждого своя командная строка: один запуск
+        # давал десятки одинаковых строк. Запуск — это корневой процесс.
+        if ($cmd -match '(?i)\s--type=') { return $null }
         $agent = 'debug'
-        $udd = ''
-        if ($cmd -match '(?i)--user-data-dir[= ]"?([^"]+?)"?(\s--|$)') { $udd = $matches[1] }
-        $realProfile = (-not $udd) -or ($udd -match '(?i)\\User Data\\?$|\\Firefox\\Profiles')
-        $sev = $(if ($realProfile) { 'CRIT' } else { 'WARN' })
-        $title = $(if ($realProfile) { 'БРАУЗЕР ЗАПУЩЕН С ОТЛАДОЧНЫМ ПОРТОМ НА ВАШЕМ ПРОФИЛЕ: {0}' -f $name } else { 'Браузер запущен с отладочным портом: {0}' -f $name })
+        $dp = Get-CgDebugProfile $cmd $Ev.TimeCreated
+        $sev = $dp.Sev; $title = ($dp.Title -f $name)
         $why = 'Через отладочный порт программа просит браузер отдать все cookie уже расшифрованными — сам файл при этом не открывают, и аудит файла этого не видит. Так обходят защиту cookie в Chrome 127+.' +
-               $(if (-not $realProfile) { "`nПрофиль отдельный ($udd) — так работают автотесты и Playwright. Если это не вы — разберитесь." } else { '' })
+               $(if ($dp.Why) { "`n" + $dp.Why } else { '' })
+        if ($procId) { $State.Seen["dbgpid|$procId"] = $true }
     }
     # теневые копии и копирование занятых файлов
     elseif ($cmd -match '(?i)esentutl(\.exe)?["\s].*(/vss|/y\s)' -or $cmd -match '(?i)HarddiskVolumeShadowCopy|\\\\\.\\PhysicalDrive|\\\\\?\\GLOBALROOT') {
@@ -272,9 +324,22 @@ function Invoke-CgDebugPortCheck {
         $key = 'dbg|{0}|{1}' -f $p.Id, $l.LocalPort
         if ($State.Seen.ContainsKey($key)) { continue }
         $State.Seen[$key] = $true
+        # Этот запуск уже показан по журналу запуска программ — второй
+        # строкой про тот же браузер не дублируем
+        if ($State.Seen.ContainsKey("dbgpid|$($p.Id)")) { continue }
+        $State.Seen["dbgpid|$($p.Id)"] = $true
         $path = ''; try { $path = $p.Path } catch { }
-        $out += New-CgEvent 'WARN' 'Агент' ('Браузер слушает порт {0}: {1}' -f $l.LocalPort, $n) (
-            "Программа: $path`nPID: $($p.Id)`nАдрес: $($l.LocalAddress):$($l.LocalPort)`n`nОбычный браузер портов не открывает. Открытый порт у браузера — это отладка: через неё можно забрать все cookie, не трогая файл.") $n $path $p.Id
+        $cmd = ''
+        try { $cmd = "$((Get-CimInstance Win32_Process -Filter "ProcessId=$($p.Id)" -ErrorAction Stop).CommandLine)" } catch { }
+        $sev = 'WARN'; $title = 'Браузер слушает порт {0}: {1}' -f $l.LocalPort, $n; $why = ''
+        if ($cmd) {
+            $started = Get-Date; try { $started = $p.StartTime } catch { }
+            $dp = Get-CgDebugProfile $cmd $started
+            $sev = $dp.Sev; $why = "`n" + $dp.Why
+            if ($dp.Kind -ne 'gone') { $title = ($dp.Title -f $n) + " (порт $($l.LocalPort))" }
+        }
+        $out += New-CgEvent $sev 'Агент' $title (
+            "Программа: $path`nPID: $($p.Id)`nАдрес: $($l.LocalAddress):$($l.LocalPort)`nКоманда: $cmd`n`nОбычный браузер портов не открывает. Открытый порт у браузера — это отладка: через неё можно забрать все cookie, не трогая файл.$why") $n $path $p.Id
     }
     Set-CgAgentTick $State 'debug' $true ('портов браузеров: ' + @($out).Count)
     return $out

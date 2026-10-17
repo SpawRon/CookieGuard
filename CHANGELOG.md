@@ -9,6 +9,11 @@
 - **Findings → Autorun**: CookieGuard's own `Watcher` and `Watchdog` tasks are no longer CRITICAL.
   They are recognised by the exact command line pointing at this installation; anything added to it
   still raises the alarm.
+- **Monitor → debug port**: one row per browser launch instead of one per Chrome child process
+  (a single headless render produced dozens). A browser with a debug port on a fresh, empty
+  profile — automated tests, Playwright, page renderers — is now a note. A profile whose cookie,
+  password or key files were copied in (written earlier than created) is CRITICAL, like your real
+  profile; a reused automation profile stays a warning.
 
 ## 3.1.0 — 2026-10-16
 
